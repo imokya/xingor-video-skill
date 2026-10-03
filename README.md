@@ -2,8 +2,6 @@
 
 一个 Claude Code Skill：把一段**口播 / talking-head 视频**自动剪成科技感十足的 16:9 成片。
 
-![cover](docs/cover-v3.jpg)
-
 ## 效果
 
 - **文字在人物背后**：AI 抠像（RobustVideoMatting）后，大字落在人物身后
