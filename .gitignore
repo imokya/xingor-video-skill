@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.DS_Store
+.venv/
+models/
+work/
+*.mp4
+*.mkv
+*.wav
+*.f32
