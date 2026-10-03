@@ -10,6 +10,7 @@
 - **MG / 演示动画**：流程图、步骤列表、数据卡片、数字人 vs 真人点阵对比、Skill 打包动画等 18 个镜头模板
 - **口播小窗（TalkCard）**：人物放进竖向圆角 ON AIR 卡片，可从全屏缩成小窗，在右侧 / 左侧 / 圆形气泡之间弹簧变形移动，跟随人脸裁切；支持浅色纸面和深色两种主题
 - **深色科技场景**：人物抠出缩到右侧，带荧光绿描边光，左侧放演示动画
+- **钩子（开头精彩片段）**：`hook.py` 按音量、语速、爆点词、提问和数字给片段打分，按视频长度给出钩子时长（几秒到几十秒）；可混入成品等 B-roll，自带「精彩预告」HUD、真实源时间码、故障切换和「正片开始」转场
 - **逐字对齐的字幕**：Whisper 转写 + 关键词荧光绿高亮
 - **剪辑**：自动缩短停顿、推拉镜头、故障 / 斜切光带转场
 - **音效**：whoosh、重击、弹出、上升音等全部程序合成，跟动画同步；可选 BGM 自动避让人声
@@ -38,11 +39,14 @@ cd work
 # 2. 分析视频：标准化、转写、找停顿、逐帧抠像、检测人物位置
 .venv/bin/python ../scripts/analyze.py ../口播.mp4
 
-# 3. 修改 captions.txt（一行对应一段，用 | 切分字幕），
+# 3. 挑钩子片段（打分 + 建议的 HOOK 配置）
+.venv/bin/python ../scripts/hook.py
+
+# 4. 修改 captions.txt（一行对应一段，用 | 切分字幕），
 #    参照 references/example_project/scenes.py 写 scenes.py
 
-# 4. 静帧预览（秒为单位）→ 完整渲染
-.venv/bin/python ../scripts/render.py test 3.5 12 30
+# 5. 静帧预览（秒为单位，h 开头表示钩子内的时间）→ 完整渲染
+.venv/bin/python ../scripts/render.py test h1.0 3.5 12 30
 .venv/bin/python ../scripts/render.py full ../成片_v1.mp4 --bgm music.mp3
 ```
 
@@ -54,9 +58,10 @@ references/style-guide.md        风格规范 + 镜头模板选择表
 references/example_project/      93 秒示例视频的完整镜头代码与字幕
 scripts/setup.sh                 环境安装
 scripts/analyze.py               视频分析（ASR / 停顿 / 抠像 / 人物定位）
+scripts/hook.py                  钩子候选片段打分与建议
 scripts/components.py            18 个可复用镜头模板（含口播小窗）
 scripts/fx.py                    绘图与缓动工具（skia）
-scripts/render.py                合成渲染 + 音频（剪停顿、音效、BGM）
+scripts/render.py                合成渲染 + 音频（钩子、剪停顿、音效、BGM）
 scripts/montage.py               静帧拼图
 ```
 

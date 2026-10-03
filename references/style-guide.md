@@ -102,10 +102,19 @@ TalkCard(48.6, 57.8, theme='paper', label='ON AIR · 阿星', hud='// 04 — 新
          items=[(53.8, '文字'), (54.6, '动画'), (55.9, '节奏'), (56.4, '音效')])
 ```
 
+## 5c. Hook (钩子) — the cold open
+The hook is not a scene: it is prepended footage with its own fixed teaser look, rendered by `render.py` from `HOOK` in `scenes.py` (see SKILL.md 4b).
+- Look: full frame with alternating slow push-ins and pull-outs per clip; lime corner brackets; a blinking `HIGHLIGHT · 精彩预告` kicker; the true `SRC mm:ss` of each clip on the right (`B-ROLL` for external footage); a story-style segment bar at the top; regular subtitles.
+- Punch text per clip (`text=`, 2–4 chars, heavy 230px) slams in behind the person on the key word, with a lime outline echo, like `BehindText`. Use at most one punch per clip, and leave the clip that is already strong on its own without one.
+- Cuts between clips: an RGB-split glitch, a whoosh and a digital glitch sound. Into the edit: a riser → lime diagonal wipe → impact, plus a `▶ 正片开始` chip.
+- Keep it tight: no clip under ~1.8 s (it reads as a flash), and none over ~9 s (it stops teasing). The first clip should land its point within 2 s.
+- With B-roll of the result, open on it with its own sound at 0.7–0.9 volume, then cut to the speaker's punchline about it.
+
 ## 6. Pitfalls
 - `captions.txt` must keep one line per transcript segment, or render aborts.
 - Menlo/DIN/Avenir have no CJK. `text()` falls back to PingFang automatically, but ✓ ▶ ⇆ ① may still be missing. Draw icons with `check_mark` / `play_icon`. ①②③ do render in PingFang.
 - Don't put lime text on the light background of the real video without a shade or chip behind it.
 - Behind-text that sits wholly on the background (never overlapping the person) loses the effect; move it closer to the head.
 - If the speaker moves a lot, the static `PERSON` anchor is approximate. Check the test frames at several times.
+- Hook clips overlapping the opening lines feel repetitive, because the same words play again seconds later. Prefer mid/late moments.
 - Scene times are *source* seconds. Pause trimming shifts output time by up to ~0.3s per cut; the renderer maps it, so never hand-convert.

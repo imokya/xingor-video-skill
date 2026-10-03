@@ -2,12 +2,14 @@
 
 Run from the work dir (the one analyze.py filled) with its venv:
     .venv/bin/python <skill>/scripts/render.py test 1.5 12.3 30      # still frames -> test/t_<sec>.jpg
+    .venv/bin/python <skill>/scripts/render.py test h0.5 h3.2        # hook stills (h = seconds into the hook)
     .venv/bin/python <skill>/scripts/render.py full ../成片_v1.mp4    # full video
 
 The work dir must contain scenes.py defining:
     KEYWORDS = [...]           # words highlighted lime in subtitles
     def build_scenes(): ...    # list of components.Scene covering 0 .. video end, back to back
     EXTRA_SFX = [(t, kind, gain), ...]   # optional
+    HOOK = dict(clips=[(s0, s1), ...], ...) # optional cold open played before the edit (see SKILL.md "Hook")
 """
 import sys, os, json, math, subprocess, time, importlib.util
 import numpy as np
@@ -91,9 +93,9 @@ def split_kw(s):
     return out
 
 
-def draw_caption(c, st, caps):
+def draw_caption(c, st, caps, min_start=-1e9):
     for s0, s1, txt in caps:
-        if s0 <= st < s1:
+        if s0 <= st < s1 and s0 >= min_start:
             p = eo(P(st, s0, .14))
             f = F('bold', 50)
             parts = split_kw(txt)
@@ -104,6 +106,97 @@ def draw_caption(c, st, caps):
                 text(c, ptxt, x, y, f, (0, 0, 0), .85 * p, stroke=7)
                 x += text(c, ptxt, x, y, f, LIME if hl else WHITE, p)
             return
+
+
+# ------------------------------------------------------------------ hook (钩子 / cold open)
+def norm_hook():
+    """HOOK in scenes.py -> normalized dict, or None.
+    clips: (s0, s1) = source seconds of the talking-head video, or ('broll.mp4', s0, s1[, gain]) = external footage
+           with its own sound, or dicts with keys path/s0/s1/gain/text/text_t."""
+    hk = getattr(PROJ, 'HOOK', None)
+    if not hk: return None
+    hk = dict(clips=list(hk)) if isinstance(hk, (list, tuple)) else dict(hk)
+    clips = []
+    for cl in hk.get('clips', []):
+        if isinstance(cl, dict): d = dict(cl)
+        elif isinstance(cl[0], str): d = dict(path=cl[0], s0=cl[1], s1=cl[2], gain=cl[3] if len(cl) > 3 else .8)
+        else: d = dict(path=None, s0=cl[0], s1=cl[1])
+        for k_, v_ in dict(path=None, gain=1.0, text=None, text_t=.2).items(): d.setdefault(k_, v_)
+        d['n'] = max(1, int(round((d['s1'] - d['s0']) * FPS)))
+        clips.append(d)
+    if not clips: return None
+    o = 0
+    for d in clips: d['o0'] = o; o += d['n']
+    hk.update(clips=clips, n=o, dur=o / FPS)
+    for k_, v_ in dict(title='', title_t=.25, kicker='HIGHLIGHT · 精彩预告', outro='正片开始').items(): hk.setdefault(k_, v_)
+    return hk
+
+
+HOOK = norm_hook()
+
+
+def hook_clip_at(hf):
+    """hook frame index -> (clip index, clip, local seconds)"""
+    for k, d in enumerate(HOOK['clips']):
+        if hf < d['o0'] + d['n']: return k, d, (hf - d['o0']) / FPS
+    d = HOOK['clips'][-1]; return len(HOOK['clips']) - 1, d, (d['n'] - 1) / FPS
+
+
+def media_aspect(path):
+    import re
+    out = subprocess.run([FF, '-hide_banner', '-i', path], capture_output=True, text=True).stderr
+    m = re.search(r'Video:.*?(\d{2,5})x(\d{2,5})', out)
+    return int(m.group(1)) / int(m.group(2)) if m else W / H
+
+
+def media_vf(d):
+    """B-roll with the frame's shape is cover-cropped; a different shape (e.g. vertical phone footage) is fitted
+    over a blurred, darkened copy of itself. d['fit'] = 'auto' | 'cover' | 'blur'."""
+    fit = d.get('fit', 'auto')
+    if fit == 'auto':
+        fit = 'cover' if abs(media_aspect(d['path']) / (W / H) - 1) < .15 else 'blur'
+    if fit == 'cover':
+        return f'scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},fps={FPS},setsar=1'
+    return (f'split[a][b];[a]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},boxblur=40:2,eq=brightness=-0.12[bg];'
+            f'[b]scale={W}:{H}:force_original_aspect_ratio=decrease[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2,fps={FPS},setsar=1')
+
+
+def hook_pipe(d, gray=False, start=0.0, nframes=None):
+    path = SRC if d['path'] is None else d['path']
+    if gray: path = 'matte.mkv'
+    cmd = [FF, '-v', 'error', '-ss', f"{d['s0'] + start:.4f}", '-i', path]
+    if d['path'] is not None: cmd += ['-vf', media_vf(d)]
+    cmd += ['-frames:v', str(nframes or d['n']), '-f', 'rawvideo', '-pix_fmt', 'gray' if gray else 'rgb24', '-']
+    return subprocess.Popen(cmd, stdout=subprocess.PIPE)
+
+
+def hook_frames():
+    """yields (hook frame index, rgb frame, matte or None) for the whole hook"""
+    hf = 0
+    for d in HOOK['clips']:
+        v = hook_pipe(d); m = hook_pipe(d, gray=True) if d['path'] is None else None
+        fb = mb = None
+        for j in range(d['n']):
+            b = v.stdout.read(W * H * 3)
+            if len(b) == W * H * 3: fb = b
+            if m is not None:
+                b2 = m.stdout.read(W * H)
+                if len(b2) == W * H: mb = b2
+            if fb is None: fb = bytes(W * H * 3)
+            yield hf, np.frombuffer(fb, np.uint8).reshape(H, W, 3), (np.frombuffer(mb, np.uint8).reshape(H, W) if mb else None)
+            hf += 1
+        v.kill()
+        if m is not None: m.kill()
+
+
+def hook_frame_at(d, lt):
+    v = hook_pipe(d, start=lt, nframes=1); fb = v.stdout.read(); v.wait()
+    fr = np.frombuffer(fb[:W * H * 3], np.uint8).reshape(H, W, 3)
+    mt = None
+    if d['path'] is None:
+        m = hook_pipe(d, gray=True, start=lt, nframes=1); mb = m.stdout.read(); m.wait()
+        mt = np.frombuffer(mb[:W * H], np.uint8).reshape(H, W)
+    return fr, mt
 
 
 # ------------------------------------------------------------------ audio + synthesized sfx
@@ -191,6 +284,37 @@ def build_audio(a, sfx_list, sfx_gain=.22, bgm=None, bgm_gain=.12):
     return (np.tanh(mix * 1.05) / np.tanh(1.05)).astype(np.float32)
 
 
+def build_hook_audio(a, sfx_gain=.22):
+    """hook sound: the clips' own audio (same voice level as the body) + cut whooshes, title impacts and a riser into the edit"""
+    spf = SR // FPS; fade = int(.012 * SR); pieces = []
+    vk = .89 / (np.abs(a).max() + 1e-9)
+    for d in HOOK['clips']:
+        L = d['n'] * spf
+        if d['path'] is None:
+            i0 = int(round(d['s0'] * SR)); seg = a[i0:i0 + L].copy() * vk
+        else:
+            raw = subprocess.run([FF, '-v', 'error', '-ss', f"{d['s0']:.3f}", '-i', d['path'], '-t', f'{L / SR + .1:.3f}',
+                                  '-f', 'f32le', '-ac', '2', '-ar', str(SR), '-'], capture_output=True).stdout
+            seg = np.frombuffer(raw, np.float32).reshape(-1, 2)[:L].copy()
+            if len(seg): seg *= .89 / (np.abs(seg).max() + 1e-9)
+        if len(seg) < L: seg = np.concatenate([seg, np.zeros((L - len(seg), 2), np.float32)])
+        seg *= d['gain']
+        seg[:fade] *= np.linspace(0, 1, fade)[:, None]; seg[-fade:] *= np.linspace(1, 0, fade)[:, None]
+        pieces.append(seg)
+    mix = np.concatenate(pieces)
+    sfx = [(HOOK['title_t'], 'impact', .9)] if HOOK['title'] else []
+    for k, d in enumerate(HOOK['clips']):
+        t0 = d['o0'] / FPS
+        if k: sfx += [(t0 - .3, 'whoosh', .8), (t0, 'glitch', .45)]
+        if d['text']: sfx.append((t0 + d['text_t'], 'impact', .9))
+    sfx.append((HOOK['dur'] - 1.0, 'riser', .9))
+    fx_ = np.zeros(len(mix) + SR * 2)
+    for t, kind, g in sfx:
+        x = synth(kind); i0 = max(0, int(t * SR)); fx_[i0:i0 + len(x)] += x * g * sfx_gain
+    mix = mix + fx_[:len(mix), None]
+    return (np.tanh(mix * 1.05) / np.tanh(1.05)).astype(np.float32)
+
+
 # ------------------------------------------------------------------ video
 x_ = np.arange(256) / 255
 LUT = (np.stack([np.clip(x_ - .045 * np.sin(2 * np.pi * x_), 0, 1),
@@ -222,7 +346,7 @@ class Ctx: pass
 
 
 def render_frame(surface, st, ot, frame, matte, ctx):
-    c = surface.getCanvas(); c.clear(skia.ColorBLACK)
+    c = surface.getCanvas(); c.restoreToCount(1); c.resetMatrix(); c.clear(skia.ColorBLACK)
     sc = scene_at(ctx.scenes, st); xf = sc.xf(st)
     fr = grade(frame)
     img = skia.Image.fromarray(np.dstack([fr, np.full(fr.shape[:2], 255, np.uint8)]), colorType=skia.kRGBA_8888_ColorType)
@@ -276,6 +400,7 @@ def render_frame(surface, st, ot, frame, matte, ctx):
             p2 = skia.Path(); p2.moveTo(bx + 380, 0); p2.lineTo(bx + 420, 0); p2.lineTo(bx + 120, H); p2.lineTo(bx + 80, H); p2.close()
             c.drawPath(p2, paint(WHITE, .8))
     draw_caption(c, st, ctx.captions)
+    if HOOK: draw_hook_bridge(c, ot)
     c.drawRect(skia.Rect.MakeXYWH(0, 0, W * ot / ctx.dur, 4), paint(LIME, .9))
     if ot > ctx.dur - .5:
         c.drawRect(skia.Rect.MakeWH(W, H), paint((0, 0, 0), (ot - (ctx.dur - .5)) / .5))
@@ -283,13 +408,94 @@ def render_frame(surface, st, ot, frame, matte, ctx):
     for nx in ctx.scenes[1:]:
         d = abs(st - nx.t0)
         if d < .14 and not getattr(nx, 'smooth_in', False):
-            g = 1 - d / .14; sh = int(24 * g)
-            out[..., 0] = np.roll(out[..., 0], sh, 1); out[..., 2] = np.roll(out[..., 2], -sh, 1)
-            r = np.random.RandomState(int(st * 100))
-            for _ in range(int(6 * g)):
-                y0 = r.randint(0, H - 60); hh = r.randint(8, 60)
-                out[y0:y0 + hh] = np.roll(out[y0:y0 + hh], r.randint(-80, 80), 1)
+            rgb_glitch(out, 1 - d / .14, int(st * 100))
+    if HOOK and ot < .14:
+        rgb_glitch(out, 1 - ot / .14, int(ot * 1000) + 7)
     return out
+
+
+def lime_wipe(c, d):
+    """diagonal lime band; d = seconds relative to the cut (-.3 .. .3)"""
+    bx = lerp(-700, W + 300, eio((d + .3) / .6))
+    pth = skia.Path(); pth.moveTo(bx, 0); pth.lineTo(bx + 340, 0); pth.lineTo(bx + 40, H); pth.lineTo(bx - 300, H); pth.close()
+    c.drawPath(pth, paint(LIME, .95))
+    p2 = skia.Path(); p2.moveTo(bx + 380, 0); p2.lineTo(bx + 420, 0); p2.lineTo(bx + 120, H); p2.lineTo(bx + 80, H); p2.close()
+    c.drawPath(p2, paint(WHITE, .8))
+
+
+def rgb_glitch(out, g, seed):
+    sh = int(24 * g)
+    out[..., 0] = np.roll(out[..., 0], sh, 1); out[..., 2] = np.roll(out[..., 2], -sh, 1)
+    r = np.random.RandomState(seed)
+    for _ in range(int(6 * g)):
+        y0 = r.randint(0, H - 60); hh = r.randint(8, 60)
+        out[y0:y0 + hh] = np.roll(out[y0:y0 + hh], r.randint(-80, 80), 1)
+
+
+def render_hook_frame(surface, hf, frame, matte, ctx):
+    """cold-open look: full frame push-ins, punch text behind the person, 精彩预告 HUD with the real source timecode,
+    story-style segment bar, subtitles, glitch cuts between clips, lime wipe into the edit."""
+    c = surface.getCanvas(); c.restoreToCount(1); c.resetMatrix(); c.clear(skia.ColorBLACK)
+    k, d, lt = hook_clip_at(hf)
+    ht = hf / FPS; cd = d['n'] / FPS
+    pr = eio(lt / max(.1, cd))
+    xf = CP.full_xf(lerp(1.04, 1.12, pr) if k % 2 == 0 else lerp(1.12, 1.05, pr))
+    fr = grade(frame)
+    img = skia.Image.fromarray(np.dstack([fr, np.full(fr.shape[:2], 255, np.uint8)]), colorType=skia.kRGBA_8888_ColorType)
+    draw_img(c, img, xf)
+    txt, tt = (d['text'], d['text_t']) if d['text'] else ((HOOK['title'], HOOK['title_t']) if k == 0 else (None, 0))
+    if txt:
+        f = F('heavy', 230 if len(txt) <= 4 else 190)
+        CP.slam_text(c, txt, 60, 640, f, lt, tt, WHITE, .97, stagger=.07)
+        if lt > tt + .45:
+            e = eo(P(lt, tt + .45, .6))
+            text(c, txt, 60, 640 + f.getSize() * 1.1 * e, f, LIME, .5 * (1 - P(lt, tt + 1.25, .8)), stroke=2)
+        if matte is not None:
+            cut = skia.Image.fromarray(np.ascontiguousarray(np.dstack([fr, matte])), colorType=skia.kRGBA_8888_ColorType,
+                                       alphaType=skia.kUnpremul_AlphaType)
+            draw_img(c, cut, xf)
+    vignette(c, .5)
+    corners(c, 36, 36, W - 72, H - 72, 46, LIME, .9, 4)
+    blink = 1 if int(ht * 2.5) % 2 == 0 else .3
+    circle(c, 76, 96, 9, LIME, blink)
+    text(c, HOOK['kicker'], 96, 104, F('mono', 22), WHITE, .95, spacing=2)
+    if d['path'] is None:
+        stc = d['s0'] + lt
+        text(c, f'SRC {int(stc) // 60:02d}:{int(stc) % 60:02d}', W - 76, 104, F('mono', 22), LIME, .9, align='r', spacing=2)
+    else:
+        text(c, 'B-ROLL', W - 76, 104, F('mono', 22), LIME, .9, align='r', spacing=2)
+    # story-style segment bar, one segment per clip
+    x0, x1, gap = 76, W - 76, 10
+    tot = HOOK['n']
+    xx = x0
+    for j, dj in enumerate(HOOK['clips']):
+        wj = (x1 - x0 - gap * (len(HOOK['clips']) - 1)) * dj['n'] / tot
+        rrect(c, xx, 56, wj, 6, 3, WHITE, .25)
+        fill = 1 if j < k else (lt / cd if j == k else 0)
+        if fill > 0: rrect(c, xx, 56, wj * fill, 6, 3, LIME, .95)
+        xx += wj + gap
+    if d['path'] is None:
+        draw_caption(c, d['s0'] + lt, ctx.captions, min_start=d['s0'] - .15)
+    if ht > HOOK['dur'] - .3:
+        lime_wipe(c, ht - HOOK['dur'])
+    out = surface.makeImageSnapshot().toarray(colorType=skia.kRGBA_8888_ColorType)
+    if k and lt < .14:
+        rgb_glitch(out, 1 - lt / .14, hf)
+    return out
+
+
+def draw_hook_bridge(c, ot):
+    """first second of the edit after a hook: second half of the lime wipe + the outro chip"""
+    if ot < .3: lime_wipe(c, ot)
+    if HOOK['outro'] and ot < 1.4:
+        a = eob(P(ot, .12, .35)) * clamp((1.4 - ot) / .3)
+        if a > 0:
+            f = F('heavy', 40); w_ = tw(HOOK['outro'], f) + 110
+            c.save(); c.translate(W / 2, 120); c.scale(lerp(.7, 1, a), lerp(.7, 1, a))
+            rrect(c, -w_ / 2, -36, w_, 72, 36, LIME, a)
+            CP.play_icon(c, -w_ / 2 + 38, 0, 20, INK, LIME, a)
+            text(c, HOOK['outro'], -w_ / 2 + 72, 14, f, INK, a)
+            c.restore()
 
 
 def prep_grid(frame, matte, ctx):
@@ -309,6 +515,7 @@ def make_ctx(env):
     sfx = [(sc.t0 - .12, 'whoosh', .8) for sc in ctx.scenes[1:]]
     for sc in ctx.scenes: sfx += sc.events()
     sfx += list(getattr(PROJ, 'EXTRA_SFX', []))
+    if HOOK: sfx.append((KEPT[0] / FPS, 'impact', .9))
     ctx.sfx = sfx
     ctx.captions = build_captions()
     ctx.n_frames = len(KEPT); ctx.dur = len(KEPT) / FPS; ctx.fps = FPS; ctx.cell = 15
@@ -334,6 +541,15 @@ def main():
         import PIL.Image as Image
         os.makedirs('test', exist_ok=True)
         for ts in sys.argv[2:]:
+            if ts.startswith('h'):
+                if not HOOK: raise SystemExit('no HOOK defined in scenes.py')
+                hf = min(HOOK['n'] - 1, int(round(float(ts[1:]) * FPS)))
+                k, d, lt = hook_clip_at(hf)
+                fr, mt = hook_frame_at(d, lt)
+                out = render_hook_frame(surface, hf, fr, mt, ctx)
+                Image.fromarray(out[..., :3]).save(f'test/t_{ts}.jpg', quality=88)
+                print('saved test/t_%s.jpg' % ts)
+                continue
             st = float(ts); i = int(round(st * FPS))
             fr = read_frame_at(SRC, i); mt = read_frame_at('matte.mkv', i, True)
             prep_grid(fr, mt, ctx); ctx._ot = out_time(st); ctx.head_x = None
@@ -344,7 +560,11 @@ def main():
     out_path = sys.argv[2]
     bgm = None
     if '--bgm' in sys.argv: bgm = sys.argv[sys.argv.index('--bgm') + 1]
-    build_audio(a, ctx.sfx, bgm=bgm).tofile('mix.f32')
+    mix = build_audio(a, ctx.sfx, bgm=bgm)
+    if HOOK:
+        mix = np.concatenate([build_hook_audio(a), mix])
+        print(f"hook: {len(HOOK['clips'])} clip(s), {HOOK['dur']:.1f}s", flush=True)
+    mix.tofile('mix.f32')
     dec = subprocess.Popen([FF, '-v', 'error', '-i', SRC, '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-'], stdout=subprocess.PIPE)
     mdec = subprocess.Popen([FF, '-v', 'error', '-i', 'matte.mkv', '-f', 'rawvideo', '-pix_fmt', 'gray', '-'], stdout=subprocess.PIPE)
     enc = subprocess.Popen([FF, '-v', 'error', '-y', '-f', 'rawvideo', '-pix_fmt', 'rgba', '-s', f'{W}x{H}', '-r', str(FPS), '-i', '-',
@@ -352,6 +572,9 @@ def main():
                             '-c:v', 'libx264', '-preset', 'medium', '-crf', '17', '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
                             '-c:a', 'aac', '-b:a', '256k', '-shortest', out_path], stdin=subprocess.PIPE)
     keep = set(KEPT.tolist()); t0 = time.time(); n = 0
+    if HOOK:
+        for hf, fr, mt in hook_frames():
+            enc.stdin.write(render_hook_frame(surface, hf, fr, mt, ctx).tobytes())
     for i in range(NSRC):
         fb = dec.stdout.read(W * H * 3); mb = mdec.stdout.read(W * H)
         if len(fb) < W * H * 3 or len(mb) < W * H: break
