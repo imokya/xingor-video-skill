@@ -1016,7 +1016,7 @@ class ThisVideo(Scene):
             for i, sc in enumerate(ctx.scenes):
                 gp = eo(P(t, (self.timeline_t or self.t0 + .6) + i * .04, .3))
                 x0 = x + w * sc.t0 / total; x1 = x + w * sc.t1 / total
-                col = {'full': (70, 82, 110), 'dark': BLUE, 'card': LIME}[sc.mode]
+                col = {'full': (70, 82, 110), 'dark': BLUE, 'card': LIME, 'talk': VIOLET}[sc.mode]
                 rrect(c, x0 + 1.5, y, (x1 - x0 - 3) * gp, 36, 4, col, a * tp * .9)
             for s0, s1, _ in ctx.captions:
                 rrect(c, x + w * s0 / total, y + 44, max(2, w * (s1 - s0) / total - 2), 10, 3, WHITE, a * tp * .35)
@@ -1038,3 +1038,203 @@ class ThisVideo(Scene):
 
     def events(self):
         return [(self.t0 + .1, 'whoosh', .6)] + ([(self.stats_t, 'pop', .7)] if self.stats_t else [])
+
+
+# =============================================================== TALK CARD (口播小窗)
+PAPER = (244, 244, 240)
+PAPER_INK = (16, 18, 22)
+PAPER_GREY = (128, 132, 140)
+
+
+def spring(x):
+    """damped spring 0->1 with a small overshoot; feels 'physical' for card moves."""
+    x = clamp(x)
+    return 1.0 if x >= 1 else 1 - math.exp(-6.5 * x) * math.cos(8.0 * x) * (1 - .25 * x)
+
+
+CARD_SLOTS = {
+    # name: (center x, center y, w, h, radius)
+    'full':   (W / 2, H / 2, W, H, 0),
+    'right':  (1530, 505, 470, 820, 30),
+    'left':   (390, 520, 440, 780, 30),
+    'center': (W / 2, 500, 520, 860, 30),
+    'bubble': (1730, 210, 240, 240, 120),
+    'bubble_l': (190, 210, 240, 240, 120),
+    'wide':   (1370, 470, 860, 520, 26),
+}
+
+
+def paper_bg(c, t, a=1.0, grid=True):
+    c.drawRect(skia.Rect.MakeWH(W, H), paint(PAPER, a))
+    sh = skia.GradientShader.MakeRadial((W * .35, H * .3), W * .8, [CI(WHITE, .7 * a), CI(WHITE, 0)])
+    c.drawRect(skia.Rect.MakeWH(W, H), skia.Paint(Shader=sh))
+    if grid:
+        gp = paint(PAPER_INK, .035 * a, stroke=1)
+        for x in range(0, W, 80): c.drawLine(x, 0, x, H, gp)
+        for y in range(0, H, 80): c.drawLine(0, y, W, y, gp)
+    # floor shelf the card stands on (subtle perspective plane)
+    sh = skia.GradientShader.MakeLinear([(0, 730), (0, H)], [CI((225, 226, 222), 0), CI((214, 216, 212), .9 * a)])
+    c.drawRect(skia.Rect.MakeLTRB(0, 730, W, H), skia.Paint(Shader=sh))
+
+
+def marked_line(c, s, x, y, f, t, t0, theme, a=1.0, mark_t=None):
+    """Headline where [brackets] mark highlighted words. paper: ink text on a lime marker;
+    dark: lime text. Words slide up + fade in with a light stagger."""
+    parts = []
+    buf = ''; hl = False
+    for ch in s:
+        if ch == '[': parts.append((buf, hl)); buf = ''; hl = True
+        elif ch == ']': parts.append((buf, hl)); buf = ''; hl = False
+        else: buf += ch
+    parts.append((buf, hl))
+    xx = x
+    ink = PAPER_INK if theme == 'paper' else WHITE
+    for i, (seg, h) in enumerate(parts):
+        if not seg: continue
+        p = eo(P(t, t0 + i * .08, .45))
+        w = tw(seg, f)
+        if h and theme == 'paper':
+            mp = eo(P(t, (mark_t or t0 + .35) + i * .05, .35))
+            rrect(c, xx - 6, y - f.getSize() * .42, (w + 12) * mp, f.getSize() * .5, 4, LIME, a * p)
+        col = (LIME if h else ink) if theme == 'dark' else ink
+        text(c, seg, xx, y + 26 * (1 - p), f, col, a * p)
+        xx += w
+    return xx - x
+
+
+class TalkCard(Scene):
+    """口播小窗: the talking-head lives in ONE persistent card that pops in, morphs and moves.
+    Inspired by vertical 'on air' presenter cards. Face-tracked crop, soft shadow, ON AIR pill.
+
+    theme: 'paper' (light editorial) | 'dark'
+    path:  [(t, slot), ...]  slot = name in CARD_SLOTS or a (cx, cy, w, h, r) tuple.
+           First entry is the start state ('full' makes the full video shrink into the card).
+    label: pill text, e.g. 'ON AIR · 阿星'   hud: top-left code label, e.g. '// 01 — 方法'
+    kicker / lines=[(t, '先做[完整]产品'), ...] / items=[(t, text)]: built-in left-side content
+    Override content(c, t, ctx, card_rect) for custom demos (it gets the card rect to avoid)."""
+    mode = 'talk'
+    theme = 'paper'
+    path = [(0, 'right')]
+    label = 'ON AIR'
+    hud = None
+    kicker = None
+    kicker_t = None
+    lines = []
+    items = []
+    morph = .85
+    smooth_in = True
+
+    def draw_bg(self, c, t, ctx):
+        if self.theme == 'paper':
+            paper_bg(c, t)
+        else:
+            dark_bg(c, t)
+
+    def state(self, t):
+        def get(s):
+            return CARD_SLOTS[s] if isinstance(s, str) else s
+        cur = get(self.path[0][1])
+        for i in range(1, len(self.path)):
+            t0, s = self.path[i]
+            if t < t0: break
+            k = spring(P(t, t0, self.morph))
+            nxt = get(s)
+            cur = tuple(lerp(cur[j], nxt[j], k) for j in range(5))
+        # entrance pop (only when not starting from full frame)
+        if self.path[0][1] != 'full':
+            k = spring(P(t, self.t0, .55))
+            cx, cy, w, h, r = cur
+            s = lerp(.86, 1, k)
+            cur = (cx, cy + 40 * (1 - k), w * s, h * s, r * s)
+        return cur
+
+    def crop(self, w, h, ctx):
+        """source rect to show in a card of size w x h: centered on the face, zooming in as the card
+        gets smaller; blends to the whole frame as the card approaches full size."""
+        fullness = clamp((w * h) / (W * H) * 1.6)
+        hx = ctx.head_x
+        fy = CP_face_y()
+        zoom = lerp(1.0, 2.1, clamp(1 - h / 860)) if h < 860 else 1.0
+        ch = H / zoom
+        cw = min(W, ch * w / h)
+        ch = cw * h / w
+        x0 = clamp(hx - cw / 2, 0, W - cw)
+        y0 = clamp(fy - ch * .42, 0, H - ch)
+        full = (0, 0, W, H)
+        rect = (x0, y0, cw, ch)
+        return tuple(lerp(rect[i], full[i], fullness ** 2) for i in range(4))
+
+    def card_rect(self, t):
+        cx, cy, w, h, r = self.state(t)
+        return (cx - w / 2, cy - h / 2, w, h, r)
+
+    def draw_card(self, c, t, ctx):
+        x, y, w, h, r = self.card_rect(t)
+        a = window(t, self.t0 - 1, self.t1, .01, .2) if self.path[0][1] == 'full' else window(t, self.t0, self.t1, .15, .2)
+        big = clamp((w * h) / (W * H) * 1.6)
+        rr = skia.RRect.MakeRectXY(skia.Rect.MakeXYWH(x, y, w, h), r, r)
+        sh_a = (.30 if self.theme == 'paper' else .55) * (1 - big)
+        c.drawRRect(skia.RRect.MakeRectXY(skia.Rect.MakeXYWH(x + 6, y + 30, w - 12, h - 10), r, r), paint((0, 0, 0), sh_a * a, blur=34))
+        c.save(); c.clipRRect(rr, skia.ClipOp.kIntersect, True)
+        sx, sy, sw, shh = self.crop(w, h, ctx)
+        c.drawImageRect(ctx.img, skia.Rect.MakeXYWH(sx, sy, sw, shh), skia.Rect.MakeXYWH(x, y, w, h),
+                        skia.SamplingOptions(skia.FilterMode.kLinear, skia.MipmapMode.kNone), skia.Paint(Alphaf=a))
+        c.restore()
+        ring = WHITE if self.theme == 'paper' else LIME
+        if r >= min(w, h) / 2 - 2:  # bubble: white/lime ring like a sticker
+            c.drawRRect(rr, paint(ring, a, stroke=5))
+        else:
+            c.drawRRect(rr, paint(WHITE, .5 * a * (1 - big), stroke=1.5))
+        # ON AIR pill, fades out as the card shrinks to a bubble or grows to full
+        la = a * clamp((h - 400) / 200) * (1 - big)
+        if la > 0 and self.label:
+            f = F('mono', 17)
+            lw = tw(self.label, f) + 58
+            rrect(c, x + 18, y + 18, lw, 38, 19, (10, 10, 12), .55 * la)
+            pulse = .55 + .45 * (0.5 + 0.5 * math.sin(t * 5))
+            circle(c, x + 39, y + 37, 6, LIME, la * pulse)
+            text(c, self.label, x + 54, y + 43, f, WHITE, la)
+
+    def content(self, c, t, ctx, card):
+        a = self.a(t)
+        ink = PAPER_INK if self.theme == 'paper' else WHITE
+        grey = PAPER_GREY if self.theme == 'paper' else GREY
+        x0 = 120 if card[0] > W / 2 - 100 else 760
+        if self.kicker:
+            kp = eo(P(t, self.kicker_t or self.t0 + .2, .4))
+            text(c, self.kicker, x0, 250, F('bold', 24), grey, a * kp, spacing=3)
+        for i, (t0, s) in enumerate(self.lines):
+            marked_line(c, s, x0, 370 + i * 118, F('heavy', 100), t, t0, self.theme, a)
+        for i, (t0, s) in enumerate(self.items):
+            p = spring(P(t, t0, .55))
+            if p <= 0: continue
+            f = F('bold', 30)
+            w = tw(s, f) + 56
+            xx = x0 + sum(tw(it[1], f) + 76 for it in self.items[:i])
+            yy = 640 + 40 * (1 - p)
+            if self.theme == 'paper':
+                rrect(c, xx, yy + 10, w, 66, 14, (0, 0, 0), .10 * a, blur=14)
+                rrect(c, xx, yy, w, 66, 14, WHITE, a * clamp(p * 3))
+                text(c, s, xx + 28, yy + 44, f, ink, a * clamp(p * 3))
+            else:
+                glass(c, xx, yy, w, 66, 14, a * clamp(p * 3), edge_a=.6)
+                text(c, s, xx + 28, yy + 44, f, WHITE, a * clamp(p * 3))
+
+    def front(self, c, t, ctx):
+        a = self.a(t)
+        if self.hud:
+            col = PAPER_GREY if self.theme == 'paper' else GREY
+            text(c, self.hud, 40, 46, F('mono', 18), col, a)
+            text(c, ctx.tc(), W - 40, 46, F('mono', 18), col, a, align='r')
+        card = self.card_rect(t)
+        self.content(c, t, ctx, card)
+        self.draw_card(c, t, ctx)
+
+    def events(self):
+        ev = [(t0, 'swish', .6) for t0, _ in self.path[1:]]
+        ev += [(t0, 'pop', .6) for t0, _ in self.items]
+        return ev
+
+
+def CP_face_y():
+    return PERSON['face_y']

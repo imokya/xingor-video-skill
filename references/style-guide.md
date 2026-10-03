@@ -6,6 +6,7 @@
 3. Motion language
 4. Sound
 5. Scene catalog (content → template)
+5b. TalkCard (口播小窗)
 6. Pitfalls
 
 ---
@@ -76,10 +77,30 @@ Templates register their own. Add extras through `EXTRA_SFX`. Pass `--bgm file` 
 | walks through a process of 3–6 steps | `Steps` | dark |
 | mentions numbers, data, key points | `DataCards` (counter / bars / highlight / ring) | dark |
 | "this very video was made this way" | `ThisVideo` (card + real timeline of the edit) | card |
+| asks a question / states a thesis / explains calmly with a headline | `TalkCard` (口播小窗: presenter in a vertical card + headline/chips beside it) | talk |
+| a longer explanation where the person should stay visible next to the visuals | `TalkCard` with a `path` that moves the card (right → left → bubble) as the beats change | talk |
 
 Typical 90s structure: Intro → 2–3 full scenes → a dark explainer → a full punchline → a dark explainer → … → ThisVideo/Compare → CTA. That gives about 15–18 scenes.
 
 New ideas are welcome. Write a custom Scene when the content suggests something better (a code snippet typing in, a map, a chat bubble…), but keep the palette, fonts and motion language.
+
+## 5b. TalkCard (口播小窗) — the editorial card look
+One persistent card holds the talking head. It **pops in with a spring**, or **shrinks out of the full frame** (`path=[(t0,'full'), (t0+.05,'right')]` — the move is the transition, so no glitch or wipe is applied). It then **morphs and moves** between slots on later beats: `right`, `left`, `center`, `wide`, `bubble`, `bubble_l`, or any `(cx, cy, w, h, r)`.
+- The crop follows the face (per-frame head x from the matte) and zooms in as the card gets smaller. A bubble shows just the face with a white (paper) or lime (dark) ring.
+- An `ON AIR · 名字` pill with a pulsing lime dot sits top-left of the card and fades out when the card is small.
+- `theme='paper'`: light editorial page (#F4F4F0, faint 80px grid, soft floor) with ink headlines. Highlighted words `[like this]` get a **lime marker stroke** behind ink text, which is the paper equivalent of lime text. Chips are white cards with soft shadows.
+- `theme='dark'`: same card over `dark_bg`, with highlighted words in lime text and glass chips.
+- Built-in content: `kicker` (small spaced label, e.g. `Q · 产品的第一步`), `lines=[(t, '先做[完整]产品'), …]` (heavy 100px, up to 3 lines), `items=[(t, text)]` (chips), `hud='// 01 — 方法'` (top-left code label with timecode on the right). Content sits on the side away from the card.
+- For custom demos next to the card (a seesaw, a chart, a mock window), subclass and override `content(c, t, ctx, card)`. `card = (x, y, w, h, r)` is the current card rect, so you can keep clear of it.
+- Use paper scenes as a **contrast block**: 2–4 consecutive paper TalkCards form a calm "explain" chapter between loud dark/full chapters. Don't flip paper ↔ dark every scene.
+- Moving the card between beats (`right` → `left` → `bubble`) reads as a camera move and keeps a long explanation alive without changing scene.
+
+```python
+TalkCard(48.6, 57.8, theme='paper', label='ON AIR · 阿星', hud='// 04 — 新口播',
+         path=[(48.6, 'full'), (48.65, 'right'), (51.9, 'left'), (55.5, 'bubble')],
+         kicker='Q · 只要一段口播', lines=[(48.9, '[理解]内容'), (51.95, '拆出[画面]')],
+         items=[(53.8, '文字'), (54.6, '动画'), (55.9, '节奏'), (56.4, '音效')])
+```
 
 ## 6. Pitfalls
 - `captions.txt` must keep one line per transcript segment, or render aborts.

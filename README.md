@@ -2,12 +2,13 @@
 
 一个 Claude Code Skill：把一段**口播 / talking-head 视频**自动剪成科技感十足的 16:9 成片。
 
-![preview](docs/preview.jpg)
+![cover](docs/cover.jpg)
 
 ## 效果
 
 - **文字在人物背后**：AI 抠像（RobustVideoMatting）后，大字落在人物身后
-- **MG / 演示动画**：流程图、步骤列表、数据卡片、数字人 vs 真人点阵对比、Skill 打包动画等 17 个镜头模板
+- **MG / 演示动画**：流程图、步骤列表、数据卡片、数字人 vs 真人点阵对比、Skill 打包动画等 18 个镜头模板
+- **口播小窗（TalkCard）**：人物放进竖向圆角 ON AIR 卡片，可从全屏缩成小窗，在右侧 / 左侧 / 圆形气泡之间弹簧变形移动，跟随人脸裁切；支持浅色纸面和深色两种主题
 - **深色科技场景**：人物抠出缩到右侧，带荧光绿描边光，左侧放演示动画
 - **逐字对齐的字幕**：Whisper 转写 + 关键词荧光绿高亮
 - **剪辑**：自动缩短停顿、推拉镜头、故障 / 斜切光带转场
@@ -53,7 +54,7 @@ references/style-guide.md        风格规范 + 镜头模板选择表
 references/example_project/      93 秒示例视频的完整镜头代码与字幕
 scripts/setup.sh                 环境安装
 scripts/analyze.py               视频分析（ASR / 停顿 / 抠像 / 人物定位）
-scripts/components.py            17 个可复用镜头模板
+scripts/components.py            18 个可复用镜头模板（含口播小窗）
 scripts/fx.py                    绘图与缓动工具（skia）
 scripts/render.py                合成渲染 + 音频（剪停顿、音效、BGM）
 scripts/montage.py               静帧拼图

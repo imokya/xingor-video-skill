@@ -16,6 +16,7 @@ Deep ink background (#05070D), **acid lime #C6FF2E** as the only loud accent, el
 - Alternate between two kinds of scene:
   - **full-frame scenes**: the real video, gentle zooms, and text either behind the person or on a shaded left side.
   - **dark scenes**: the person is cut out, shrunk to the right, rim-lit in lime, with a demo animation on the left.
+- A third look, the **口播小窗 (TalkCard)**: the presenter sits in a vertical rounded "ON AIR" card that springs in, or shrinks out of the full frame, and moves between slots, next to big headlines on a light paper page (or the dark background). Use it for calm explanatory chapters.
 - Every visual is triggered by the exact word that is spoken, not by sentence starts.
 
 Read `references/style-guide.md` before planning. It has the rules (palette, safe zones, timing, what to avoid) and the scene catalog that maps "what is being said" to "which template".

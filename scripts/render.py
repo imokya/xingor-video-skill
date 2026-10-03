@@ -234,7 +234,18 @@ def render_frame(surface, st, ot, frame, matte, ctx):
                                           alphaType=skia.kUnpremul_AlphaType)
         return cut[0]
 
-    if sc.mode == 'card':
+    ctx.img = img
+    # per-frame head centre from the matte (smoothed), used by face-tracked crops
+    ms = matte[:H // 2:8, ::8].astype(np.float32)
+    tot = ms.sum()
+    if tot > 500:
+        hx = float((ms.sum(0) * np.arange(ms.shape[1])).sum() / tot * 8)
+        ctx.head_x = hx if ctx.head_x is None else ctx.head_x * .85 + hx * .15
+    elif ctx.head_x is None:
+        ctx.head_x = CP.PERSON['head_x']
+    if sc.mode == 'talk':
+        sc.draw_bg(c, st, ctx)
+    elif sc.mode == 'card':
         dark_bg(c, st)
         s, ox, oy = xf
         r = 22 * (1 - s) / .38 + .01
@@ -258,7 +269,7 @@ def render_frame(surface, st, ot, frame, matte, ctx):
     sc.front(c, st, ctx)
     for i, nx in enumerate(ctx.scenes[1:], 1):
         d = st - nx.t0
-        if abs(d) < .3 and ctx.scenes[i - 1].mode != nx.mode:
+        if abs(d) < .3 and ctx.scenes[i - 1].mode != nx.mode and not getattr(nx, 'smooth_in', False):
             bx = lerp(-700, W + 300, eio((d + .3) / .6))
             pth = skia.Path(); pth.moveTo(bx, 0); pth.lineTo(bx + 340, 0); pth.lineTo(bx + 40, H); pth.lineTo(bx - 300, H); pth.close()
             c.drawPath(pth, paint(LIME, .95))
@@ -271,7 +282,7 @@ def render_frame(surface, st, ot, frame, matte, ctx):
     out = surface.makeImageSnapshot().toarray(colorType=skia.kRGBA_8888_ColorType)
     for nx in ctx.scenes[1:]:
         d = abs(st - nx.t0)
-        if d < .14:
+        if d < .14 and not getattr(nx, 'smooth_in', False):
             g = 1 - d / .14; sh = int(24 * g)
             out[..., 0] = np.roll(out[..., 0], sh, 1); out[..., 2] = np.roll(out[..., 2], -sh, 1)
             r = np.random.RandomState(int(st * 100))
@@ -303,6 +314,7 @@ def make_ctx(env):
     ctx.n_frames = len(KEPT); ctx.dur = len(KEPT) / FPS; ctx.fps = FPS; ctx.cell = 15
     ctx.amp = lambda t: float(clamp(env[min(len(env) - 1, max(0, int(t * 100)))]))
     ctx._ot = 0
+    ctx.head_x = None
     ctx.tc = lambda: f'00:{int(ctx._ot) // 60:02d}:{int(ctx._ot) % 60:02d}:{int(ctx._ot * FPS) % FPS:02d}'
     return ctx
 
@@ -324,7 +336,7 @@ def main():
         for ts in sys.argv[2:]:
             st = float(ts); i = int(round(st * FPS))
             fr = read_frame_at(SRC, i); mt = read_frame_at('matte.mkv', i, True)
-            prep_grid(fr, mt, ctx); ctx._ot = out_time(st)
+            prep_grid(fr, mt, ctx); ctx._ot = out_time(st); ctx.head_x = None
             out = render_frame(surface, st, out_time(st), fr, mt, ctx)
             Image.fromarray(out[..., :3]).save(f'test/t_{ts}.jpg', quality=88)
             print('saved test/t_%s.jpg' % ts)
