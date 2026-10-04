@@ -1,6 +1,11 @@
-"""Analyze a talking-head video. Run from the work dir with its venv:
+"""Analyze a talking-head video (or a narration audio file). Run from the work dir with its venv:
 
     .venv/bin/python <skill>/scripts/analyze.py <input_video> [--model medium] [--lang zh]
+    .venv/bin/python <skill>/scripts/analyze.py narration.mp3 --size 1080x1440     # audio only, 3:4 canvas
+
+--size WxH sets the canvas (default 1920x1080); it is stored in meta.json and every script reads it from there.
+Audio-only input (mp3/wav/m4a… or a file without a video stream) gets a blank paper-coloured source.mp4 and an
+empty matte: there is no presenter, so build the edit from scenes that don't need one (poetry-ink: the P* layouts).
 
 Produces in the current dir:
   source.mp4       normalized 1920x1080, integer fps, 48k audio (letterboxed if not 16:9)
@@ -20,10 +25,20 @@ ap.add_argument('video')
 ap.add_argument('--model', default='medium')
 ap.add_argument('--lang', default='zh')
 ap.add_argument('--skip', default='', help='comma list of steps to skip: prep,asr,matte')
+ap.add_argument('--tail', type=float, default=2.0, help='audio-only: seconds of quiet after the narration, so the last page can rest')
+ap.add_argument('--size', default='1920x1080', help='canvas WxH, e.g. 1080x1440 for 3:4, 1080x1920 for 9:16')
 args = ap.parse_args()
 skip = set(args.skip.split(','))
 FF = './ffmpeg'
-W, H = 1920, 1080
+W, H = (int(v) for v in args.size.lower().split('x'))
+
+
+def has_video(path):
+    out = subprocess.run([FF, '-hide_banner', '-i', path], capture_output=True, text=True).stderr
+    return ' Video:' in out and 'Video: mjpeg' not in out   # mp3 cover art is not a video
+
+
+AUDIO_ONLY = not has_video(args.video)
 
 
 def probe_fps(path):
@@ -34,7 +49,18 @@ def probe_fps(path):
 
 
 # ---------------- prep
-if 'prep' not in skip:
+if 'prep' not in skip and AUDIO_ONLY:
+    fps = 25
+    import re as _re
+    _o = subprocess.run([FF, '-hide_banner', '-i', args.video], capture_output=True, text=True).stderr
+    _h, _m, _s = _re.search(r'Duration: (\d+):(\d+):([\d.]+)', _o).groups()
+    adur = int(_h) * 3600 + int(_m) * 60 + float(_s)
+    subprocess.run([FF, '-v', 'error', '-y', '-f', 'lavfi', '-i', f'color=c=0xF1EEE6:s={W}x{H}:r={fps}', '-i', args.video,
+                    '-map', '0:v', '-map', '1:a', '-af', f'apad=pad_dur={args.tail}', '-t', f'{adur + args.tail:.3f}', '-c:v', 'libx264', '-crf', '14', '-preset', 'fast', '-pix_fmt', 'yuv420p',
+                    '-c:a', 'aac', '-b:a', '256k', '-ar', '48000', '-ac', '2', 'source.mp4'], check=True)
+    subprocess.run([FF, '-v', 'error', '-y', '-i', 'source.mp4', '-vn', '-ac', '1', '-ar', '16000', 'audio16k.wav'], check=True)
+    print('prep done (audio only), fps', fps)
+elif 'prep' not in skip:
     fps = probe_fps(args.video)
     fps = 30 if fps > 27 else 25
     vf = f'scale={W}:{H}:force_original_aspect_ratio=decrease,pad={W}:{H}:(ow-iw)/2:(oh-ih)/2,fps={fps},setsar=1'
@@ -78,7 +104,17 @@ if 'asr' not in skip:
     print('silences', res)
 
 # ---------------- matte
-if 'matte' not in skip:
+if AUDIO_ONLY and 'matte' not in skip:
+    import re
+    out = subprocess.run([FF, '-hide_banner', '-i', 'source.mp4', '-map', '0:v', '-f', 'null', '-'], capture_output=True, text=True).stderr
+    n = int(re.findall(r'frame=\s*(\d+)', out)[-1])
+    subprocess.run([FF, '-v', 'error', '-y', '-f', 'lavfi', '-i', f'color=c=black:s={W}x{H}:r={fps}', '-frames:v', str(n),
+                    '-pix_fmt', 'gray', '-c:v', 'ffv1', 'matte.mkv'], check=True)
+    meta = {'fps': fps, 'frames': n, 'size': [W, H], 'audio_only': True,
+            'person': {'head_x': W // 2, 'head_top': H // 6, 'face_y': H // 3, 'body_left': W // 4, 'body_right': W * 3 // 4}}
+    json.dump(meta, open('meta.json', 'w'), indent=1)
+    print('meta', meta)
+elif 'matte' not in skip:
     import torch
     sys.path.insert(0, 'models/RobustVideoMatting-master')
     from model import MattingNetwork
@@ -110,7 +146,7 @@ if 'matte' not in skip:
     face_y = int(head_top + 0.33 * (H - head_top))
     bottom_rows = avg[H - 40:H].mean(0) > .5
     bx = np.where(bottom_rows)[0]
-    meta = {'fps': fps, 'frames': n, 'person': {'head_x': head_x, 'head_top': head_top, 'face_y': face_y,
+    meta = {'fps': fps, 'frames': n, 'size': [W, H], 'person': {'head_x': head_x, 'head_top': head_top, 'face_y': face_y,
                                                  'body_left': int(bx[0]) if len(bx) else 500, 'body_right': int(bx[-1]) if len(bx) else 1400}}
     json.dump(meta, open('meta.json', 'w'), indent=1)
     print('meta', meta)

@@ -4,6 +4,12 @@ import numpy as np
 import skia
 
 W, H = 1920, 1080
+try:   # canvas size of the current work dir (analyze.py --size), e.g. 1080x1440 for 3:4
+    import json as _json, os as _os
+    if _os.path.exists('meta.json'):
+        W, H = (int(v) for v in _json.load(open('meta.json')).get('size', (W, H)))
+except Exception:
+    pass
 
 # ---- palette: "NEON LAB" ----
 LIME = (198, 255, 46)
@@ -67,6 +73,13 @@ FAM = {
     'mono': ('Menlo', 700, False),
     'monor': ('Menlo', 400, False),
     'num': ('DIN Condensed', 700, False),
+    # poetry-ink theme (ink.py)
+    'song': ('Songti SC', 900, False),
+    'songb': ('Songti SC', 700, False),
+    'songr': ('Songti SC', 400, False),
+    'kai': ('Kaiti SC', 700, False),
+    'kair': ('Kaiti SC', 400, False),
+    'xing': ('Xingkai SC', 700, False),
 }
 
 

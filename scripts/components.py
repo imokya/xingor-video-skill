@@ -1044,6 +1044,8 @@ class ThisVideo(Scene):
 PAPER = (244, 244, 240)
 PAPER_INK = (16, 18, 22)
 PAPER_GREY = (128, 132, 140)
+# theme='ink' (poetry-ink): same values as ink.py, kept here to avoid a circular import
+INK_MO, INK_ZHU, INK_HUI, INK_PAPER = (22, 44, 96), (200, 70, 40), (100, 104, 114), (248, 246, 240)
 
 
 def spring(x):
@@ -1088,7 +1090,7 @@ def marked_line(c, s, x, y, f, t, t0, theme, a=1.0, mark_t=None):
         else: buf += ch
     parts.append((buf, hl))
     xx = x
-    ink = PAPER_INK if theme == 'paper' else WHITE
+    ink = {'paper': PAPER_INK, 'ink': INK_MO}.get(theme, WHITE)
     for i, (seg, h) in enumerate(parts):
         if not seg: continue
         p = eo(P(t, t0 + i * .08, .45))
@@ -1096,7 +1098,7 @@ def marked_line(c, s, x, y, f, t, t0, theme, a=1.0, mark_t=None):
         if h and theme == 'paper':
             mp = eo(P(t, (mark_t or t0 + .35) + i * .05, .35))
             rrect(c, xx - 6, y - f.getSize() * .42, (w + 12) * mp, f.getSize() * .5, 4, LIME, a * p)
-        col = (LIME if h else ink) if theme == 'dark' else ink
+        col = (LIME if h else ink) if theme == 'dark' else (INK_ZHU if h else ink) if theme == 'ink' else ink
         text(c, seg, xx, y + 26 * (1 - p), f, col, a * p)
         xx += w
     return xx - x
@@ -1106,7 +1108,7 @@ class TalkCard(Scene):
     """口播小窗: the talking-head lives in ONE persistent card that pops in, morphs and moves.
     Inspired by vertical 'on air' presenter cards. Face-tracked crop, soft shadow, ON AIR pill.
 
-    theme: 'paper' (light editorial) | 'dark'
+    theme: 'paper' (light editorial) | 'dark' | 'ink' (poetry-ink: xuan paper, Songti, cinnabar highlights)
     path:  [(t, slot), ...]  slot = name in CARD_SLOTS or a (cx, cy, w, h, r) tuple.
            First entry is the start state ('full' makes the full video shrink into the card).
     label: pill text, e.g. 'ON AIR · 阿星'   hud: top-left code label, e.g. '// 01 — 方法'
@@ -1127,6 +1129,10 @@ class TalkCard(Scene):
     def draw_bg(self, c, t, ctx):
         if self.theme == 'paper':
             paper_bg(c, t)
+        elif self.theme == 'ink':
+            import ink
+            ink.ink_bg(c, t)
+            ink.mist(c, t, 760, 900, .5, 21, 3)
         else:
             dark_bg(c, t)
 
@@ -1173,21 +1179,27 @@ class TalkCard(Scene):
         a = window(t, self.t0 - 1, self.t1, .01, .2) if self.path[0][1] == 'full' else window(t, self.t0, self.t1, .15, .2)
         big = clamp((w * h) / (W * H) * 1.6)
         rr = skia.RRect.MakeRectXY(skia.Rect.MakeXYWH(x, y, w, h), r, r)
-        sh_a = (.30 if self.theme == 'paper' else .55) * (1 - big)
+        sh_a = (.30 if self.theme in ('paper', 'ink') else .55) * (1 - big)
         c.drawRRect(skia.RRect.MakeRectXY(skia.Rect.MakeXYWH(x + 6, y + 30, w - 12, h - 10), r, r), paint((0, 0, 0), sh_a * a, blur=34))
         c.save(); c.clipRRect(rr, skia.ClipOp.kIntersect, True)
         sx, sy, sw, shh = self.crop(w, h, ctx)
         c.drawImageRect(ctx.img, skia.Rect.MakeXYWH(sx, sy, sw, shh), skia.Rect.MakeXYWH(x, y, w, h),
                         skia.SamplingOptions(skia.FilterMode.kLinear, skia.MipmapMode.kNone), skia.Paint(Alphaf=a))
         c.restore()
-        ring = WHITE if self.theme == 'paper' else LIME
+        ring = {'paper': WHITE, 'ink': INK_PAPER}.get(self.theme, LIME)
         if r >= min(w, h) / 2 - 2:  # bubble: white/lime ring like a sticker
             c.drawRRect(rr, paint(ring, a, stroke=5))
         else:
             c.drawRRect(rr, paint(WHITE, .5 * a * (1 - big), stroke=1.5))
         # ON AIR pill, fades out as the card shrinks to a bubble or grows to full
         la = a * clamp((h - 400) / 200) * (1 - big)
-        if la > 0 and self.label:
+        if la > 0 and self.label and self.theme == 'ink':
+            f = F('songb', 20)
+            lw = tw(self.label, f) + 62
+            rrect(c, x + 18, y + 18, lw, 40, 6, INK_PAPER, .9 * la)
+            circle(c, x + 40, y + 38, 6, INK_ZHU, la * (.6 + .4 * math.sin(t * 3)))
+            text(c, self.label, x + 56, y + 45, f, INK_MO, la)
+        elif la > 0 and self.label:
             f = F('mono', 17)
             lw = tw(self.label, f) + 58
             rrect(c, x + 18, y + 18, lw, 38, 19, (10, 10, 12), .55 * la)
@@ -1197,22 +1209,29 @@ class TalkCard(Scene):
 
     def content(self, c, t, ctx, card):
         a = self.a(t)
-        ink = PAPER_INK if self.theme == 'paper' else WHITE
-        grey = PAPER_GREY if self.theme == 'paper' else GREY
+        isink = self.theme == 'ink'
+        ink = {'paper': PAPER_INK, 'ink': INK_MO}.get(self.theme, WHITE)
+        grey = {'paper': PAPER_GREY, 'ink': INK_HUI}.get(self.theme, GREY)
         x0 = 120 if card[0] > W / 2 - 100 else 760
         if self.kicker:
             kp = eo(P(t, self.kicker_t or self.t0 + .2, .4))
-            text(c, self.kicker, x0, 250, F('bold', 24), grey, a * kp, spacing=3)
+            if isink: circle(c, x0 + 6, 241, 6, INK_ZHU, a * kp)
+            text(c, self.kicker, x0 + (26 if isink else 0), 250, F('songr' if isink else 'bold', 24), grey, a * kp, spacing=6 if isink else 3)
         for i, (t0, s) in enumerate(self.lines):
-            marked_line(c, s, x0, 370 + i * 118, F('heavy', 100), t, t0, self.theme, a)
+            marked_line(c, s, x0, 370 + i * 118, F('song' if isink else 'heavy', 100), t, t0, self.theme, a)
         for i, (t0, s) in enumerate(self.items):
             p = spring(P(t, t0, .55))
             if p <= 0: continue
-            f = F('bold', 30)
+            f = F('songb' if isink else 'bold', 30)
             w = tw(s, f) + 56
             xx = x0 + sum(tw(it[1], f) + 76 for it in self.items[:i])
             yy = 640 + 40 * (1 - p)
-            if self.theme == 'paper':
+            if isink:
+                rrect(c, xx, yy + 10, w, 66, 8, (60, 60, 70), .12 * a, blur=14)
+                rrect(c, xx, yy, w, 66, 8, INK_PAPER, a * clamp(p * 3))
+                rrect(c, xx, yy + 18, 4, 30, 2, INK_ZHU, a * clamp(p * 3))
+                text(c, s, xx + 28, yy + 44, f, ink, a * clamp(p * 3))
+            elif self.theme == 'paper':
                 rrect(c, xx, yy + 10, w, 66, 14, (0, 0, 0), .10 * a, blur=14)
                 rrect(c, xx, yy, w, 66, 14, WHITE, a * clamp(p * 3))
                 text(c, s, xx + 28, yy + 44, f, ink, a * clamp(p * 3))
@@ -1223,8 +1242,9 @@ class TalkCard(Scene):
     def front(self, c, t, ctx):
         a = self.a(t)
         if self.hud:
-            col = PAPER_GREY if self.theme == 'paper' else GREY
-            text(c, self.hud, 40, 46, F('mono', 18), col, a)
+            col = {'paper': PAPER_GREY, 'ink': INK_HUI}.get(self.theme, GREY)
+            hf = F('songr', 22) if self.theme == 'ink' else F('mono', 18)
+            text(c, self.hud, 40, 50, hf, col, a, spacing=4 if self.theme == 'ink' else 0)
             text(c, ctx.tc(), W - 40, 46, F('mono', 18), col, a, align='r')
         card = self.card_rect(t)
         self.content(c, t, ctx, card)

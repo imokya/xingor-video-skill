@@ -8,6 +8,17 @@ from components import *
 KEYWORDS = ['Opus 5.5', 'MiniMax', 'HeyGen', 'skill', '数字人', '真人实拍', '大字', '图片', '动画', '音效', 'AI',
             '评论区', '节奏', '文字排版', '人物身后', '提示词', '剪辑', '动效', '重复调用', '自动', '数据', '重点内容', '最有意思', '直观']
 
+# Cold open (see SKILL.md 4b): the strongest lines first, then the edit starts. Source seconds (approximate here;
+# take real ones from hook.py / transcript.json).
+HOOK = dict(
+    clips=[
+        dict(s0=4.25, s1=6.45, text='不是我拍的', text_t=1.0),   # 但这条视频，其实不是我坐在镜头前拍出来的
+        (9.75, 12.75),                                         # 我只是把口播内容交给了Opus 5.5
+    ],
+    kicker='HIGHLIGHT · 精彩预告',
+    outro='正片开始',
+)
+
 
 def build_scenes():
     return [
