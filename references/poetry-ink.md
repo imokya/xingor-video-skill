@@ -1,9 +1,8 @@
 # poetry-ink · 诗墨国风 — style guide & scene catalog
 
 The second look of this skill. It replaces NEON LAB's loud lime/glitch language with xuan paper, indigo ink,
-a single cinnabar accent and slow, natural ink-wash motion. Use it when the user asks for 水墨 / 诗词 / 国风 /
-中国风 / 古风 / 东方美学 / 诗意 / "poetry-ink", or when the content itself is poetic, cultural or contemplative
-(诗词赏析, 传统文化, 茶, 书法, 旅行随笔, 读书分享…).
+a single cinnabar accent and slow, natural ink-wash motion. Use it only when the user asks for 水墨诗词
+(or names poetry-ink).
 
 Turn it on with one line in the project's `scenes.py`:
 ```python
