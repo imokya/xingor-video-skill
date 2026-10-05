@@ -1,6 +1,6 @@
 # xingor-video-skill
 
-一个 Claude Code Skill：交给它一段口播视频、一段旁白音频或一个主题，自动剪成带字幕、动效和音效的成片。
+一个 AI 视频剪辑技能：交给它一段口播视频、一段旁白音频或一个主题，自动剪成带字幕、动效和音效的成片。采用通用的 [Agent Skills](https://agentskills.io) 格式，可在 Claude Code、WorkBuddy、Codex、Cursor 等支持技能的 AI 助手里使用。
 
 ## 支持的风格
 
@@ -12,7 +12,7 @@
 
 ## 用法
 
-在 Claude Code 里把文件交给它，说想要的效果即可：
+在你的 AI 助手里把文件交给它，说想要的效果即可：
 
 ```
 帮我把 口播.mp4 剪辑一下，加字幕和特效            → NEON LAB
@@ -25,8 +25,12 @@
 
 ## 安装
 
+把仓库克隆到 AI 助手的技能目录，例如 Claude Code：
+
 ```bash
 git clone https://github.com/imokya/xingor-video-skill.git ~/.claude/skills/xingor-video-skill
 ```
+
+其他助手放进各自的 skills 目录即可（文件夹名保持 `xingor-video-skill`）。
 
 第一次使用时会自动准备运行环境。需要 macOS（用到系统中文字体）；文物纪录片配音需要 MiniMax API Key（写在 `.env` 里）。
