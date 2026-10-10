@@ -112,11 +112,15 @@ Project folder per topic, e.g. `~/Desktop/敦煌/三星堆/`. Run the tools from
 - You cannot listen: report loudness numbers (`volumedetect` / RMS per section) and ask the user to check by ear.
 
 ## 6. 3:4 (小红书)
-`--ratio 3x4`: the 9:16 canvas is drawn as usual; the content band y 140–1520 is scaled to 900×1150 and centred
-(80 px top margin) over a blurred, darkened copy of itself with feathered edges; subtitles are drawn directly on the
-3:4 frame (top y 1268, ~90 px bottom margin); HUD small text moves to the two bottom corners so it never collides
-with top titles. **Don't simply crop** the 9:16 frame — titles at the top and subtitles at the bottom get cut, and
-users want white space above and below. Keep the HUD small text (users asked to keep it).
+`--ratio 3x4`: the 9:16 canvas is drawn as usual, then the band y 100–1600 (1500 px) is scaled by 0.96 to fill the
+full 1440 height — **the background stays full-bleed** (users preferred this over a shrunken inset with blurred
+margins). The ~20 px gaps left and right are filled with a stretched, blurred copy of the same frame and feathered,
+so no seam shows. The HUD keeps its small location / time text **at the top** like 9:16 (users asked for that).
+Subtitles are drawn directly on the 3:4 frame (top y 1262, ~110 px above the bottom edge) over a bottom scrim.
+- Keep anything important inside canvas y ≈ 180–1450: above 180 it collides with the HUD text, below ~1450 it sits
+  under the subtitles. Example fixes: put a ruler's readout beside its top end, not above it; keep side labels
+  inside x ≤ ~1000.
+- Never plain-crop the 9:16 frame (titles and subtitles get cut).
 
 ## 7. Pitfalls (all hit in practice)
 - Wikimedia rate-limits non-standard thumbnail widths and originals (HTTP 429): request 1280 / 1920 / 3840 only.

@@ -283,8 +283,8 @@ def v_shot_06(u, D):
                 d.line((x - (16 if k % 5 == 0 else 8), yy, x, yy), fill=GOLD_HI + (200,), width=2)
         d.line((x - 30, yt, x + 30, yt), fill=GOLD_HI + (255,), width=4)
         over(im, lay)
-        metal_put(im, f"{3.96 * p:.2f}", 64, x - 10, yt - 60, 1.0)
-        put(im, text_img("米", 30, PAPER, BOLD), x + 100, yt - 56, 1.0)
+        metal_put(im, f"{3.96 * p:.2f}", 64, x - 110, yt + 4, 1.0)      # 读数放在标尺顶端左侧
+        put(im, text_img("米", 30, PAPER, BOLD), x - 20, yt + 8, 1.0)
     tb = lt(5, "九只") - 0.3
     k = prog(u, tb, tb + 0.8, ease_io)
     if k > 0:
@@ -633,7 +633,7 @@ SECTION_HEADS = ["head_19a", "head_2b", "head_15a", "head_22c", "head_5a", "sxd_
 def v_shot_20(u, D):
     """土坑剖面：器物 → 象牙 → 填土（示意）"""
     im = stage(u, 76, rings_a=0.3)
-    x0, x1, top, bot = 120, 960, 560, 1300
+    x0, x1, top, bot = 110, 880, 560, 1300
     glass(im, (x0 - 40, top - 80, x1 + 40, bot + 60), 1.0)
     d = ImageDraw.Draw(im)
     d.line([(x0, top), (x0 + 80, bot), (x1 - 80, bot), (x1, top)], fill=GOLD, width=3)

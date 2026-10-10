@@ -17,7 +17,7 @@
   if __name__ == "__main__": dc.main(SHOTS, sfx_events)
 
 命令行：--stills 1 2.5 ...（预览帧 -> preview/）  --demo SEC（只渲染前 SEC 秒）
-        --music music/xxx.mp3（混入背景音乐）  --out ../成片.mp4  --ratio 3x4（小红书 1080×1440，上下留白）
+        --music music/xxx.mp3（混入背景音乐）  --out ../成片.mp4  --ratio 3x4（小红书 1080×1440，背景铺满）
 """
 import json, math, random, subprocess, sys, wave
 from functools import lru_cache
@@ -37,14 +37,15 @@ PUNCT = "，。？！；：、——…"
 BRONZE = (120, 170, 150)
 
 # ---- 画幅：--ratio 3x4（小红书 1080×1440）----
-# 9:16 画布照常绘制；3:4 时取画布 y 90–1530 的内容区缩小到 840×1120 居中（上下留白），字幕直接画在 3:4 画面上
+# 9:16 画布照常绘制；3:4 时取画布 y 100–1600（1500 高）只缩 4% 铺满全高，背景铺满，
+# 左右各约 20 px 用同画面拉伸模糊补齐；HUD 小字仍在顶部；字幕直接画在 3:4 画面上（顶边 1262）。
 RATIO34 = "--ratio" in sys.argv and sys.argv[sys.argv.index("--ratio") + 1] == "3x4"
-SRC_Y0, SRC_Y1 = 90, 1530
-CONTENT = (120, 70, 840, 1120)
+SRC_Y0, SRC_Y1 = 100, 1600
+CONTENT = (21, 0, 1038, 1440)
 OUT_H = 1440 if RATIO34 else 1920
-SUB_Y = 1238 if RATIO34 else 1530
-HUD_T, HUD_B = (SRC_Y0 + 40, SRC_Y1 - 30) if RATIO34 else (150, 1880)
-HUD_TAG = "DOCUMENTARY"     # 左上 / 左下 HUD 小字，项目里改：dc.HUD_TAG = "SANXINGDUI · 广汉"
+SUB_Y = 1262 if RATIO34 else 1530
+HUD_T, HUD_B = (178, 1560) if RATIO34 else (150, 1880)
+HUD_TAG = "DOCUMENTARY"     # HUD 地点小字，项目里改：dc.HUD_TAG = "SANXINGDUI · 广汉"
 
 # ---- 由 init() 设置 ----
 R = Path(".")
@@ -479,7 +480,7 @@ def rings(base, u, cx=W / 2, cy=760, a=1.0, spin=6.0):
 
 
 def hud(base, u, a=1.0, tag=None):
-    """四角框线 + 扫描线 + 小字（地点标签与计时）。3:4 时小字放在底部两角框内，避开顶部标题"""
+    """四角框线 + 扫描线 + 顶部小字（地点标签与计时）"""
     if a <= 0.01:
         return
     tag = tag or HUD_TAG
@@ -492,12 +493,9 @@ def hud(base, u, a=1.0, tag=None):
     yy = HUD_T + ((u * 160) % (HUD_B - HUD_T))
     d.line((50, yy, W - 50, yy), fill=(160, 230, 210, int(26 * a)), width=2)
     over(base, lay)
-    if RATIO34:
-        put(base, text_img(tag, 24, GOLD_HI, REG, shadow=False, spacing=4), 124, HUD_B - 44, a, anchor="lt")
-        put(base, text_img(f"T+{u:05.2f}", 24, GOLD_HI, REG, shadow=False), W - 250, HUD_B - 44, a, anchor="lt")
-    else:
-        put(base, text_img(tag, 22, GOLD, REG, shadow=False, spacing=4), 70, HUD_T - 46, a * 0.8, anchor="lt")
-        put(base, text_img(f"T+{u:05.2f}", 22, GOLD, REG, shadow=False), W - 220, HUD_T - 46, a * 0.8, anchor="lt")
+    ty = HUD_T - 40 if RATIO34 else HUD_T - 46
+    put(base, text_img(tag, 22, GOLD, REG, shadow=False, spacing=4), 70, ty, a * 0.8, anchor="lt")
+    put(base, text_img(f"T+{u:05.2f}", 22, GOLD, REG, shadow=False), W - 220, ty, a * 0.8, anchor="lt")
 
 
 def god_rays2(base, u, cx, cy, a, color=(255, 214, 150)):
@@ -917,27 +915,26 @@ def render_frame(n, shots):
 
 @lru_cache(None)
 def _feather34():
+    """左右两侧 24 px 羽化，上下不羽化（背景铺满）"""
     x, y, w, h = CONTENT
     m = np.ones((h, w), np.float32)
-    ramp, rs = np.arange(24) / 24, np.arange(70) / 70   # 上下窄羽化，左右宽羽化
-    m[:24, :] *= ramp[:, None]; m[-24:, :] *= ramp[::-1][:, None]
-    m[:, :70] *= rs[None, :]; m[:, -70:] *= rs[::-1][None, :]
+    r = np.arange(24) / 24
+    m[:, :24] *= r[None, :]; m[:, -24:] *= r[::-1][None, :]
     return Image.fromarray((m * 255).astype(np.uint8))
 
 
 @lru_cache(None)
 def _scrim34():
-    a = np.clip((np.arange(OUT_H) - 1130) / 200, 0, 1) * 200
+    a = np.clip((np.arange(OUT_H) - 1120) / 220, 0, 1) * 210
     v = np.zeros((OUT_H, W, 4), np.uint8); v[..., 3] = a.astype(np.uint8)[:, None]
     return Image.fromarray(v, "RGBA")
 
 
 def to_34(frame):
-    """9:16 画布 -> 3:4：内容区缩小居中，四周用同画面的模糊暗化背景补齐（羽化接缝）"""
+    """9:16 画布 -> 3:4：取 y 100–1600 只缩 4% 铺满全高，左右窄缝用同画面拉伸模糊补齐"""
     x, y, w, h = CONTENT
     region = frame.crop((0, SRC_Y0, W, SRC_Y1))
-    bg = region.resize((W // 8, OUT_H // 8), Image.BILINEAR).filter(ImageFilter.GaussianBlur(4)).resize((W, OUT_H), Image.BILINEAR)
-    bg = Image.eval(bg, lambda v: int(v * 0.32))
+    bg = region.resize((W // 8, OUT_H // 8), Image.BILINEAR).filter(ImageFilter.GaussianBlur(3)).resize((W, OUT_H), Image.BILINEAR)
     bg.paste(region.resize((w, h), Image.LANCZOS), (x, y), _feather34())
     over(bg, _scrim34())
     return bg
