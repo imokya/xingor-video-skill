@@ -175,7 +175,7 @@ def design(name, seed, mood='light', accent=None, voice='modern', tempo='medium'
     return Theme(name, family, bg=bg, surface=surface, ink=ink, muted=muted, accent=acc, accent2=acc2, wash=wash, line=line,
                  fonts=dict(FONT_VOICES.get(voice, FONT_VOICES['modern'])), tempo=tempo, enter=enter, turn=turn,
                  sfx=sfx or ('ink' if voice in ('literary', 'hand') else 'neon'),
-                 background=background or ('dark' if mood == 'dark' else 'paper'), note=note)
+                 background=background or ('dark' if mood == 'dark' else 'paper' if voice in ('literary', 'hand') else 'plain'), note=note)
 
 
 def report(th):

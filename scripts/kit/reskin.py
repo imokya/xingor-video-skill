@@ -39,7 +39,7 @@ def apply(th):
     ink_table = {ink0.bg: th.bg, ink0.surface: th.surface, ink0.ink: th.ink, ink0.accent2: th.accent2, ink0.wash: th.wash,
                  ink0.accent: th.accent, ink0.muted: th.muted}
     neon_table = {neon0.accent: th.accent, neon0.accent2: th.accent2, neon0.wash: th.wash, neon0.muted: th.muted,
-                  (255, 255, 255): th.ink, (5, 7, 13): on_acc,
+                  (5, 7, 13): on_acc,
                   (244, 244, 240): th.bg, (16, 18, 22): th.ink, (128, 132, 140): th.muted}
     _swap(IK, ink_table)
     _swap(fx, neon_table)
@@ -47,14 +47,13 @@ def apply(th):
     # paper / ink family
     IK.XUAN, IK.XUAN_L, IK.MO, IK.DAI, IK.QIAN, IK.ZHU, IK.HUI = th.bg, th.surface, th.ink, th.accent2, th.wash, th.accent, th.muted
     IK._TEX.pop('paper', None)
+    IK.PAPER_STYLE = th.background
     IK.TURN = th.turn
     # NEON family (names were copied into each module by `from fx import *`)
     neon = dict(LIME=th.accent, BLUE=th.accent2, VIOLET=th.wash, GREY=th.muted, INK=on_acc)
     for mod in (fx, CP, IK):
         for k, v in neon.items():
             setattr(mod, k, v)
-    for mod in (fx, CP):          # text colour of the NEON templates (ink.py keeps WHITE for paper highlights)
-        mod.WHITE = th.ink
     fx.DARK_BG = (th.surface, KT.mix(th.surface, th.bg, .6), th.bg)
     # TalkCard's paper / ink variants
     CP.PAPER, CP.PAPER_INK, CP.PAPER_GREY = th.bg, th.ink, th.muted

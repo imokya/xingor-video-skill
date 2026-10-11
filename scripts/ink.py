@@ -118,7 +118,16 @@ def backdrop_bg(c, t, a=1.0, path=None, safe=None, veil=None):
         sh = skia.GradientShader.MakeLinear([(x0, 0), (x2, 0)], [CI(XUAN_L, veil), CI(XUAN_L, veil * .75), CI(XUAN_L, 0)],
                                             [0, (x1 - x0) / (x2 - x0) * .85, 1])
         c.drawRect(skia.Rect.MakeWH(W, H), skia.Paint(Shader=sh))
+PAPER_STYLE = 'paper'   # 'paper' = xuan texture; designed themes may set 'plain' (clean page) or 'dark' via kit.reskin
+
+
 def ink_bg(c, t, a=1.0):
+    if PAPER_STYLE != 'paper':   # a clean page in the theme colour with a soft light falloff
+        c.drawRect(skia.Rect.MakeWH(W, H), paint(XUAN))
+        glow = (255, 255, 255) if PAPER_STYLE == 'plain' else XUAN_L
+        sh = skia.GradientShader.MakeRadial((W * .38, H * .32), max(W, H) * .8, [CI(glow, .55 if PAPER_STYLE == 'plain' else .35), CI(glow, 0)])
+        c.drawRect(skia.Rect.MakeWH(W, H), skia.Paint(Shader=sh))
+        return
     c.drawImage(paper_img(), 0, 0)
     if a < 1: c.drawRect(skia.Rect.MakeWH(W, H), paint(XUAN, 1 - a))
 

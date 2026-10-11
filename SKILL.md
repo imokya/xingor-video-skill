@@ -1,6 +1,6 @@
 ---
 name: xingor-video-skill
-description: Turn a raw talking-head / 口播 video into a finished 16:9 edit in the "xingor" style — the person is cut out so huge kinetic text sits BEHIND them, slick MG / demo animations (pipelines, step lists, data cards, halftone split, skill-core), dark "neon lab" scenes with a lime rim-lit cutout, word-synced subtitles with keyword highlights, an automatic hook / 钩子 cold open cut from the best moments, glitch/lime-wipe transitions, pause trimming and synthesized sound effects. Use this whenever the user hands over a 口播/talking-head/数字人/vlog-to-camera video and asks to 剪辑, 加特效, 加字幕, 做动效, make it look like a tech-YouTuber / 科技博主 video, put text behind the person (文字在人物背后), add MG动画/演示动画, wants a 钩子/开头精彩片段/预告 cut from the video, or says "用 xingor 风格 / xingor-video-skill". Also use it when they want to re-edit or tweak a video made with this style. It has a second look, poetry-ink (诗墨国风): xuan paper, indigo Songti/Kaiti type, cinnabar seals, ink-spread page turns, vertical poems, torn paper and guqin-like sounds — use it only when the request says 水墨诗词 (or names poetry-ink); otherwise use the default NEON LAB look. A third look, documentary (文物纪录片), needs no presenter video: from a topic or 文案 it makes a 2–3 min 9:16 (and 3:4 小红书) explainer about artifacts / history / places (三星堆、敦煌、藏经洞、富春山居图…) — Wikimedia Commons photos, rembg cutouts of artifacts floating on a dark bronze-teal stage with rim light, glass cards, gold metal type, text typed behind the artifact, HUD, MiniMax narration, real Mixkit SFX and optional music, one-line subtitles; use it when the user asks for a 纪录片 / 文物 / 历史 short from a script, or names documentary. A fourth look, flat-review (撞色测评), also needs no presenter: a voice-over app / AI-tool / product review (实测、测评、评测) built from screenshots and generated results — flat coral / cream / blue / black colour blocks with circle-iris transitions, stretched kinetic headlines ending in a dot, a mock app input box that types the real prompts, animated spec tables, browser scrolls, zoom-and-circle flaw call-outs, a hard-cut punchline gag, Fish Audio or MiniMax narration, 3:4 小红书 + 6:7 视频号 outputs and a matching cover; use it when the user wants a 纯配音 / 无人出镜 测评 or 实测 video, or names flat-review / 撞色测评.
+description: Turn a talking-head / 口播 video, a narration audio file or just a topic into a finished video — word-synced subtitles, kinetic text (also behind the person via AI matting), motion-graphics templates, a hook / 钩子 cold open, page-turn transitions and synthesized sound, in 16:9, 3:4 or 9:16. When the user names no style, design a look for the content (colour, type, motion, transitions, sound) and pick or build components from the shared library. Named styles: NEON LAB (科技感 / xingor 风格), poetry-ink (only when they say 水墨诗词), documentary (纪录片 / 文物 / 历史 from a script, no presenter) and flat-review (纯配音 测评 / 实测 / 撞色测评). Use whenever someone hands over a 口播 / 数字人 / vlog video or a narration and asks to 剪辑, 加字幕, 加特效, 做动效, put text behind the person (文字在人物背后), add MG动画, cut a 钩子 / 开头精彩片段, or re-edit a video made with this skill.
 ---
 
 # xingor-video-skill
@@ -25,12 +25,13 @@ Read `references/style-guide.md` before planning. It has the rules (palette, saf
 ## Choose the style first
 | the request / content | style | set in scenes.py | read | start from |
 |---|---|---|---|---|
-| default; tech, product, AI, fast-paced, "科技感" | **NEON LAB** | nothing (`THEME = 'neon'`) | `references/style-guide.md` | `references/example_project/scenes.py` |
+| **no style named** (the usual case) | **a look designed for this content** | `THEME = KT.design(...)` (+ `from kit.blocks import *`) | `references/design.md` | `director.py` draft (`draft_scenes.py`) |
+| asks for 科技感 / NEON / "xingor 风格" | **NEON LAB** | nothing (`THEME = 'neon'`) | `references/style-guide.md` | `references/example_project/scenes.py` |
 | the request says **水墨诗词** (or names poetry-ink) | **poetry-ink · 诗墨国风** | `THEME = 'poetry-ink'` and `from ink import *` | `references/poetry-ink.md` | `references/example_project/scenes_poetry_ink.py` |
 | a **纪录片 / 文物 / 历史** short from a topic or 文案 (no presenter video), or names documentary | **documentary · 文物纪录片** | its own pipeline in `scripts/doc/` (`import doc_core as dc`) | `references/documentary.md` | `references/example_documentary/scenes_sanxingdui.py` |
 | a **纯配音 / 无人出镜 测评·实测** of an app, AI tool or product from screenshots, or names flat-review / 撞色测评 | **flat-review · 撞色测评** | its own pipeline in `scripts/review/` (`from rv_core import *`) | `references/flat-review.md` | `references/example_review/scenes_muse.py` |
 
-Anything else — including other Chinese-style wording like 国风 or 中国风 — uses NEON LAB unless the user asks for 水墨诗词. Don't mix the two template families in one video (`TalkCard` works in both: `theme='ink'`).
+If no style is named, **design one** (`references/design.md`): read the content, derive a theme (seed colour, mood, type voice, tempo, page turn, sound) with `kit.theme.design`, check it with `kit/preview.py`, and choose components by what each sentence does — from `components.py`, `ink.py` and `kit/blocks.py`, all of which follow the active theme — designing new ones when nothing fits. Chinese-style wording like 国风 / 中国风 is a design brief, not a request for poetry-ink; only 水墨诗词 selects it. Don't mix the two template families in one video (`TalkCard` works in both: `theme='ink'`).
 
 **poetry-ink in one breath**: xuan paper (#F1EEE6), indigo ink (#162C60) Songti Black headlines, a single cinnabar accent (#C84628) for seals, dots, short brush strokes and subtitle keywords. Pale dry-brush ghost characters bleed off the edges; a cut-corner paper card, embossed ripples, orbit hairlines and halftone dots frame the layout (like a 国风 PPT cover). The person stands on the paper like the scholar in a scroll, with mist rising around the waist. Motion is slow and natural — characters bleed into the paper, landscapes wash in, mist drifts, a skiff glides, petals fall, seals stamp — and every cut dissolves through spreading ink. Sounds are a plucked pentatonic string, a temple bell, water drops, breeze and brush. Big words can also arrive as **torn paper (大字撕纸)**: a deckle-edged sheet tears open to reveal stippled characters, or each character slaps in on its own torn scrap. Templates (in `scripts/ink.py`): `InkCover`, `InkBehind`, `TornText`, `PoemColumn`, `InkLandscape`, `InkList`, `InkEnd`, plus `TalkCard(theme='ink')`. The rest of the workflow below is identical; poetry-ink scenes are fewer and longer (4–9 s).
 
@@ -80,6 +81,11 @@ Look at `sheet.jpg` and read the transcript. Then edit `captions.txt`:
 - Drop end punctuation.
 
 ### 4. Plan the edit
+**No style named?** Design the look first (`references/design.md`). `director.py` drafts theme candidates and a scene plan from the transcript; judge it against your brief:
+```bash
+.venv/bin/python SKILL_DIR/scripts/director.py --topic "一句话说明主题"     # writes draft_scenes.py
+.venv/bin/python SKILL_DIR/scripts/kit/preview.py swatch.png draft_scenes.py      # look at the theme
+```
 Write a short scene plan, either for yourself or for the user if they want to review it. Give each sentence a time range (source seconds) and a template from the catalog. Then choose trigger times from `transcript.json` word timestamps:
 ```bash
 .venv/bin/python -c "import json;[print(' '.join(f\"{w['w'].strip()}@{w['s']:.2f}\" for w in s['words'])) for s in json.load(open('transcript.json'))]"
@@ -137,6 +143,8 @@ HOOK = dict(
 Check hook stills with `h`-prefixed times (seconds into the hook): `render.py test h0.5 h3.0 h7.8`.
 
 ### 5. Write `scenes.py` in the work dir
+For a designed look: `import kit.theme as KT`, `THEME = KT.design(...)`, and `from components import *`, `from ink import *`, `from kit.blocks import *` as needed — every template follows the theme. New components go in `scenes.py` first and into `scripts/kit/blocks.py` once they prove useful.
+
 Start from `SKILL_DIR/references/example_project/scenes.py` (NEON LAB) or `scenes_poetry_ink.py` (poetry-ink, with `THEME = 'poetry-ink'`; templates and drawing helpers are in `SKILL_DIR/scripts/ink.py`). Each is a complete 93-second example built only from templates, with every sentence commented above its scene.
 
 Use `from components import *`. Templates live in `SKILL_DIR/scripts/components.py`; each template's docstring lists its parameters. Required pieces:
