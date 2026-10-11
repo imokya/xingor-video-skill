@@ -499,3 +499,76 @@ class Callouts(Page):
 
     def events(self):
         return [(ct, 'pop', .6) for ct, *_ in self.callouts]
+
+
+class ListSteps(Page):
+    """numbered list / steps without cultural flavour: accent number badges pop in, titles slide in on their words,
+    notes in the muted colour, a hairline rule draws under each row. label (t, '流程 · 01'), title (t, '…'),
+    items=[(t, '理解内容', '读懂每一句'), …]  (up to 6)."""
+    label = None
+    title = None
+    items = []
+
+    def front(self, c, t, ctx):
+        th = TH(); a = self.a(t); x0 = 110; x1 = self.right()
+        if self.label:
+            lt, s = self.label
+            circle(c, x0 + 6, 152, 6, th.accent, a * eo(P(t, lt, .4)))
+            text(c, s, x0 + 26, 160, F(th.font('label'), 28), th.muted, a * eo(P(t, lt, .5)), spacing=4)
+        if self.title:
+            tt, s = self.title
+            kinetic_word(c, s, x0, 250, F(th.font('head'), 72), t, tt, th.ink, dist=260, a=a)
+        n = max(1, len(self.items)); step = min(118, 520 / n); y0 = 380 if self.title else 260
+        on = max([th.bg, th.surface, th.ink], key=lambda q: KT.contrast(q, th.accent))
+        for i, (t0, s, note) in enumerate(self.items):
+            y = y0 + i * step
+            k = eob(P(t, t0, .35), 1.4)
+            if k > 0:
+                circle(c, x0 + 26, y - 16, 26 * k, th.accent, a)
+                text(c, str(i + 1), x0 + 26, y - 4, F(th.font('num'), 34), on, a * clamp(k), align='c')
+            w = kinetic_word(c, s, x0 + 76, y, F(th.font('head'), 50), t, t0 + .05, th.ink, dist=140, a=a) - (x0 + 76)
+            if note:
+                text(c, note, x0 + 76 + w + 30, y - 4, F(th.font('label'), 28), th.muted, a * eo(P(t, t0 + .3, th.dur)))
+            lp = eo(P(t, t0 + .1, .6))
+            if lp > 0: line(c, x0, y + 36, x0 + (x1 - x0) * lp, y + 36, th.line, .5 * a, 1.5)
+
+    def events(self):
+        return [(t0, 'pop', .6) for t0, _, _ in self.items]
+
+
+class EndCard(Page):
+    """closing / call to action without cultural flavour: a big kinetic line with an accent end dot, an accent
+    underline drawing in, and pill chips popping in. big=(t, '评论区见'), sub=(t, '…'), items=[(t, '提示词'), …]."""
+    big = None
+    sub = None
+    items = []
+
+    def front(self, c, t, ctx):
+        th = TH(); a = self.a(t); x0 = 110
+        y = 470
+        if self.big:
+            bt, s = self.big
+            size = min(170, (self.right() - x0) / max(1, len(s)) * .92)
+            end = kinetic_word(c, s, x0, y, F(th.font('display'), size), t, bt, th.ink, a=a)
+            end_dot(c, end + size * .14, y - size * .07, t, bt + .45, th.accent, max(12, size // 9))
+            lp = eo(P(t, bt + .5, .5))
+            if lp > 0: line(c, x0 + 4, y + 36, x0 + 4 + (end - x0) * .45 * lp, y + 36, th.accent, a, 8)
+        if self.sub:
+            st, s = self.sub
+            text(c, s, x0, y + 110, F(th.font('body'), 40), th.muted, a * eo(P(t, st, th.dur)))
+        xx = x0
+        for t0, s in self.items:
+            f = F(th.font('body'), 32); w = tw(s, f) + 70
+            p = eob(P(t, t0, .4), 1.3)
+            if p > 0:
+                yy = y + 170 + 20 * (1 - p); al = a * clamp(p * 2)
+                rrect(c, xx, yy + 8, w, 62, 31, (0, 0, 0), .1 * al, blur=12)
+                rrect(c, xx, yy, w, 62, 31, th.surface, al)
+                circle(c, xx + 28, yy + 31, 6, th.accent, al)
+                text(c, s, xx + 46, yy + 42, f, th.ink, al)
+            xx += w + 26
+
+    def events(self):
+        ev = [(t0, 'pop', .5) for t0, _ in self.items]
+        if self.big: ev.append((self.big[0], 'impact', .7))
+        return ev

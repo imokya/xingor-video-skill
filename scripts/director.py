@@ -14,6 +14,7 @@ from collections import Counter
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import kit.theme as KT
+import kit.fit as FIT
 
 # ---------------------------------------------------------------- subject -> theme seeds (starting points, not rules)
 SUBJECTS = [
@@ -51,20 +52,6 @@ ROLE_RULES = [
     ('emphasis', r'其实|竟然|居然|最|关键|重点|一定|千万|真正|根本|核心'),
 ]
 
-# component suggestions: role -> (light/paper family, dark/neon family, narration-only)
-CATALOG = {
-    'opening':  ('TitleCard(show_person=True) or InkCover', 'Intro / MetalTitle', 'PCover / TitleCard'),
-    'emphasis': ('InkBehind / TypeBehind / TornText', 'BehindText / TypeBehind / SplitWord', 'PBig / PTorn'),
-    'number':   ('BigStat(show_person=True)', 'DataCards / BigStat', 'BigStat / PBig'),
-    'list':     ('InkList / FloatTags', 'Steps / Checklist', 'PWords / InkList-style Page'),
-    'compare':  ('CompareTable / TornText(cover→text)', 'Compare / SplitHalftone / CompareTable', 'PTorn / CompareTable'),
-    'quote':    ('PoemColumn / InkBehind', 'PunchHeadline', 'PPoem'),
-    'question': ('TalkCard(theme=paper|ink)', 'TalkCard(theme=dark) / PunchHeadline', 'TitleCard'),
-    'prompt':   ('PromptPage(show_person=True) / InkPrompt', 'PromptPage', 'PromptPage'),
-    'product':  ('Callouts (needs a screenshot) / InkShowcase (needs footage)', 'Callouts / Analyze', 'Callouts'),
-    'cta':      ('InkEnd', 'CTA', 'PEnd / TitleCard'),
-    'explain':  ('TalkCard / InkLandscape', 'TalkCard / Pipeline / SkillCore', 'PRoute / PWords'),
-}
 STOP = set('的了是在我你他她它们这那和与就也都还又很把被给让对从到为着过一个一些这个那个什么怎么可以已经因为所以但是如果然后其实非常就是'.split() + list('的了是在我你他她它这那和与就也都还又很把被给让对从到为着过'))
 
 
@@ -90,7 +77,7 @@ def trigger(seg, role):
     return max(cand, key=lambda x: len(x[0])) if cand else words[0]
 
 
-def themes_for(text, topic):
+def themes_for(text, topic, ch):
     blob = (topic or '') * 3 + text
     scores = []
     for kws, seed, mood, voice, tempo, turn, note in SUBJECTS:
@@ -98,9 +85,12 @@ def themes_for(text, topic):
         if n: scores.append((n, (seed, mood, voice, tempo, turn, note, kws[0])))
     scores.sort(key=lambda x: -x[0])
     picks = [s for _, s in scores[:2]] or [FALLBACK + ('通用',)]
-    out = []   # (name, theme, design-kwargs)
+    out = []   # (name, theme, design-kwargs) — turn and sound are corrected to fit the content's character
+    ok_turns = FIT.turns_for(ch)
     for seed, mood, voice, tempo, turn, note, name in picks:
-        kw = dict(seed=seed, mood=mood, voice=voice, tempo=tempo, turn=turn, note=note)
+        if turn not in ok_turns: turn = ok_turns[0] if ch != 'traditional' else 'ink'
+        if ch != 'traditional' and voice == 'hand' and name not in ('春',): voice = 'modern'
+        kw = dict(seed=seed, mood=mood, voice=voice, tempo=tempo, turn=turn, sfx=FIT.sound_for(ch), note=note)
         out.append((name, KT.design(name, **kw), kw))
     base_name, base, bkw = out[0]   # a contrasting alternative: same seed, opposite mood
     kw = dict(bkw, mood='dark' if bkw['mood'] == 'light' else 'light', voice='modern', note='opposite mood of the first candidate')
@@ -118,7 +108,8 @@ def main():
     narration = meta.get('audio_only', False)
     caps = [l.strip() for l in open('captions.txt')] if os.path.exists('captions.txt') else [s['text'] for s in segs]
     text = ''.join(caps)
-    themes = themes_for(text, args.topic)
+    ch = FIT.character(text, args.topic)
+    themes = themes_for(text, args.topic, ch)
 
     # roles + grouping into scenes (3–8 s; a role change or a long scene starts a new one)
     rows = []
@@ -136,31 +127,37 @@ def main():
         mid = round((a['t1'] + b['t0']) / 2, 2); a['t1'] = b['t0'] = mid
     scenes[0]['t0'] = 0.0
 
-    fam = 0 if themes[0][2]['mood'] == 'light' else 1
-    col = 2 if narration else fam
     L = ['"""DRAFT from director.py — judge and edit before rendering (references/design.md).',
          f'{"narration only (no presenter)" if narration else "presenter video"}; {len(scenes)} scenes; '
-         f'suggestions use the {"narration" if narration else ("light / paper" if fam == 0 else "dark / NEON")} family.', '"""',
+         f'content character: {ch} — only components / turns that fit it are suggested (scripts/kit/fit.py).', '"""',
          'from components import *', 'from ink import *', 'from kit.blocks import *', 'import kit.theme as KT', '',
          '# ---- theme candidates (pick one, or design your own from the content; check KT.report and a swatch)']
     for k, (name, th, kw) in enumerate(themes):
         L.append(f"{'' if k == 0 else '# '}THEME = KT.design({name!r}, {kw['seed']!r}, {kw['mood']!r}, voice={kw['voice']!r}, "
-                 f"tempo={kw['tempo']!r}, turn={kw['turn']!r})   # {kw['note']}")
+                 f"tempo={kw['tempo']!r}, turn={kw['turn']!r}, sfx={kw['sfx']!r})   # {kw['note']}")
     L += ['', "KEYWORDS = " + repr([w for w, _ in Counter(r['trig'][0] for r in rows if len(r['trig'][0]) >= 2).most_common(12)]), '', '',
           'def build_scenes():', '    return [']
     for sc in scenes:
         r0 = sc['rows'][0]; word, wt = r0['trig']
         for r in sc['rows']: L.append(f"        # [{r['role']}] {r['text']}")
-        L.append(f"        # suggested: {CATALOG[sc['role']][col]}   trigger: {word!r} @ {wt:.2f}")
-        L.append(f"        TitleCard({sc['t0']:.2f}, {sc['t1']:.2f}, title=({wt:.2f}, {word!r})),   # placeholder — replace with the suggested component")
+        sug = FIT.components_for(sc['role'], ch, presenter=not narration)
+        L.append(f"        # suggested ({ch}): {' / '.join(sug[:4]) or 'design a new component'}   trigger: {word!r} @ {wt:.2f}")
+        if ch == 'traditional':
+            ph = (f"PBig({sc['t0']:.2f}, {sc['t1']:.2f}, lines=[({wt:.2f}, {word!r})])" if narration else
+                  f"InkBehind({sc['t0']:.2f}, {sc['t1']:.2f}, text={word!r}, text_t={wt:.2f})")
+        else:
+            ph = f"TitleCard({sc['t0']:.2f}, {sc['t1']:.2f}, title=({wt:.2f}, {word!r}))"
+        L.append(f"        {ph},   # placeholder — replace with the suggested component")
     L += ['    ]', '']
     open(args.out, 'w').write('\n'.join(L))
 
     print('theme candidates:')
     for name, th, kw in themes: print('  ' + KT.report(th).replace('\n', '\n  '))
-    print(f'\n{len(scenes)} scenes ({"narration" if narration else "presenter"}):')
+    print(f'\ncontent character: {ch}  (fitting turns: {", ".join(FIT.turns_for(ch))}; sound: {FIT.sound_for(ch)})')
+    print(f'{len(scenes)} scenes ({"narration" if narration else "presenter"}):')
     for sc in scenes:
-        print(f"  {sc['t0']:6.2f}-{sc['t1']:6.2f}  {sc['role']:8s} -> {CATALOG[sc['role']][col]:45s} | {sc['rows'][0]['text'][:28]}")
+        sug = ' / '.join(FIT.components_for(sc['role'], ch, presenter=not narration)[:3]) or 'design new'
+        print(f"  {sc['t0']:6.2f}-{sc['t1']:6.2f}  {sc['role']:8s} -> {sug:40s} | {sc['rows'][0]['text'][:28]}")
     print(f'\nwrote {args.out}')
 
 
