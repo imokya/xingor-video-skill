@@ -50,7 +50,11 @@ FAM = {
 }
 
 
+FONT_ALIAS = {}   # kind -> kind, set by kit.reskin for designed themes (e.g. 'song' -> 'heavy')
+
+
 def F(kind, size):
+    kind = FONT_ALIAS.get(kind, kind)
     key = (kind, int(size * 4))
     f = _fonts.get(key)
     if f is None:
@@ -221,8 +225,12 @@ class Particles:
 PARTS = Particles()
 
 
+DARK_BG = None    # (centre, mid, edge) colours of dark_bg, set by kit.reskin for designed themes
+
+
 def dark_bg(c, t, a=1.0):
-    sh = skia.GradientShader.MakeRadial((W * .42, H * .42), W * .75, [CI((16, 22, 40)), CI((7, 9, 17)), CI((3, 4, 8))], [0, .55, 1])
+    c0, c1, c2 = DARK_BG or ((16, 22, 40), (7, 9, 17), (3, 4, 8))
+    sh = skia.GradientShader.MakeRadial((W * .42, H * .42), W * .75, [CI(c0), CI(c1), CI(c2)], [0, .55, 1])
     c.drawRect(skia.Rect.MakeWH(W, H), skia.Paint(Shader=sh))
     # floor perspective grid
     hy = 700

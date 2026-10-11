@@ -42,7 +42,10 @@ import kit.theme as KT
 # visual theme (kit.theme): a preset name ('neon' default, 'poetry-ink'), a dict of overrides, or a designed Theme
 THEME = getattr(PROJ, 'THEME', 'neon')
 TH = KT.resolve(THEME)
-INK = TH.family == 'ink'
+if TH.family == 'custom':   # a designed theme re-skins every template and uses the paper-family chrome
+    import kit.reskin
+    kit.reskin.apply(TH)
+INK = TH.family in ('ink', 'custom')
 
 # ------------------------------------------------------------------ edit list: shrink long pauses
 removed = set()
@@ -241,7 +244,7 @@ def build_audio(a, sfx_list, sfx_gain=.22, bgm=None, bgm_gain=.12):
     if not AUDIO_ONLY: voice = voice / (np.abs(voice).max() + 1e-9) * .89   # narration audio keeps its own level
     fx_ = np.zeros(len(voice) + SR * 2); cache = {}
     for n_, (st, kind, g) in enumerate(sfx_list):
-        key = (kind, n_ % 5 if INK else 0)
+        key = (kind, n_ % 5 if TH.sfx == 'ink' else 0)
         if key not in cache: cache[key] = synth(*key)
         x = cache[key]; ot = out_time(st) - {'whoosh': .3, 'riser': .2, 'breeze': .3, 'gliss': .4}.get(kind, 0)
         i0 = max(0, int(ot * SR)); x = x[:max(0, len(fx_) - i0)]; fx_[i0:i0 + len(x)] += x * g * sfx_gain
@@ -327,7 +330,7 @@ class Ctx: pass
 
 def synth(kind, var=0):
     """one sound from the active theme's palette (see kit.sfx)."""
-    return SFX.synth(kind, var, IK.SFX_MAP if INK else None)
+    return SFX.synth(kind, var, IK.SFX_MAP if TH.sfx == 'ink' else None)
 
 
 def ink_windows(scs):
@@ -373,7 +376,7 @@ def draw_stack(c, sc, st, img, cutimg, ctx):
         if rim > 0:
             rb = getattr(sc, 'rim_blur', 10)
             gp = skia.Paint(Alphaf=clamp(rim))
-            gp.setImageFilter(skia.ImageFilters.ColorFilter(skia.ColorFilters.Blend(CI(getattr(sc, 'rim_rgb', LIME)), skia.BlendMode.kSrcIn),
+            gp.setImageFilter(skia.ImageFilters.ColorFilter(skia.ColorFilters.Blend(CI(getattr(sc, 'rim_rgb', TH.accent if TH.family == 'custom' else LIME)), skia.BlendMode.kSrcIn),
                                                             skia.ImageFilters.Blur(rb, rb)))
             draw_img(c, cutimg(), xf, gp)
         draw_img(c, cutimg(), xf)
@@ -440,7 +443,16 @@ def render_frame(surface, st, ot, frame, matte, ctx):
         c.drawRect(skia.Rect.MakeXYWH(0, 0, W * ot / ctx.dur, 3), paint(TH.accent, .75))
         if ot > ctx.dur - .8:
             c.drawRect(skia.Rect.MakeWH(W, H), paint(TH.bg, (ot - (ctx.dur - .8)) / .8))
-        return surface.makeImageSnapshot().toarray(colorType=skia.kRGBA_8888_ColorType)
+        if IK.TURN in ('glitch', 'wipe'):   # accent band across cuts that change mode; glitch adds an RGB split
+            for i, nx in enumerate(ctx.scenes[1:], 1):
+                d = st - nx.t0
+                if abs(d) < .3 and ctx.scenes[i - 1].mode != nx.mode and not getattr(nx, 'smooth_in', False): lime_wipe(c, d)
+        out = surface.makeImageSnapshot().toarray(colorType=skia.kRGBA_8888_ColorType)
+        if IK.TURN == 'glitch':
+            for nx in ctx.scenes[1:]:
+                d = abs(st - nx.t0)
+                if d < .14 and not getattr(nx, 'smooth_in', False): rgb_glitch(out, 1 - d / .14, int(st * 100))
+        return out
     for i, nx in enumerate(ctx.scenes[1:], 1):
         d = st - nx.t0
         if abs(d) < .3 and ctx.scenes[i - 1].mode != nx.mode and not getattr(nx, 'smooth_in', False):

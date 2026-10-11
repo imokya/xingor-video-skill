@@ -591,7 +591,6 @@ def tone_filter():
     return skia.ColorFilters.Matrix(rows)
 
 
-_PAPER_F = np.array(XUAN, np.float32)
 
 
 def grade_np(fr):
@@ -599,7 +598,7 @@ def grade_np(fr):
     f = fr.astype(np.float32)
     y = (f[..., 0] * .299 + f[..., 1] * .587 + f[..., 2] * .114)[..., None]
     f = y + (f - y) * .78
-    f = f * .88 + _PAPER_F * .12
+    f = f * .88 + np.array(XUAN, np.float32) * .12
     return np.clip(f, 0, 255).astype(np.uint8)
 
 
