@@ -1,0 +1,10 @@
+{
+  "origin": {"name": "上海", "lonlat": [121.47, 31.23],
+             "airport": {"name": "浦东国际机场", "code": "PVG", "lonlat": [121.805, 31.144]}},
+  "dest":   {"name": "哈尔滨", "lonlat": [126.63, 45.75],
+             "airport": {"name": "太平国际机场", "code": "HRB", "lonlat": [126.236, 45.623], "terminal": [126.2370, 45.6195]}},
+  "poi":    {"name": "斯大林公园", "sub": "哈尔滨 · 松花江畔", "lonlat": [126.6098, 45.7785], "route_end": [126.616002, 45.779569]},
+  "ticket": {"flight": "XG2026", "demo": true, "from": "上海浦东", "to": "哈尔滨太平", "dep": "08:20", "arr": "11:05",
+             "from_sub": "PVG T1", "to_sub": "HRB T2", "dur": "2h45m"},
+  "size": [1920, 1080], "fps": 60
+}

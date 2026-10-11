@@ -34,6 +34,10 @@ COMPONENTS = {
     'EndCard':      (NON_TRAD, ('presenter', 'narration')),
     'MetalTitle':   (('tech', 'cinematic'), ('presenter', 'narration')),
     'TalkCard':     (NON_TRAD, ('presenter',)),           # theme='paper' / 'dark'; theme='ink' is traditional
+    'LogoCloud':    (('tech', 'playful', 'editorial'), ('presenter', 'narration')),
+    'LogoDrop':     (('tech', 'playful', 'editorial'), ('presenter', 'narration')),
+    'CardWall':     (('tech', 'editorial', 'cinematic'), ('presenter', 'narration')),
+    'WallPrompt':   (('tech', 'editorial'), ('presenter', 'narration')),
     # NEON family (components.py) — tech flavour (HUD, glow, halftone, scanning)
     'BehindText':   (('tech', 'playful', 'editorial', 'cinematic'), ('presenter',)),
     'SplitWord':    (('tech', 'playful', 'editorial'), ('presenter',)),
@@ -87,6 +91,7 @@ EFFECTS = {   # small effects to build new components from
     'HUD / scan line / glitch / halftone / glow rim': ('tech',),
     'metal type / rings / glass': ('tech', 'cinematic'),
     'kinetic slide + end dot / typewriter / counter / table / input box / pointer': NON_TRAD,
+    'app tiles / logo cloud / logo pile / screenshot wall / prompt pill → brand dot': ('tech', 'playful', 'editorial'),
 }
 
 # what a sentence does -> candidate components, best first (filtered by fit and context in components_for)
@@ -98,10 +103,12 @@ ROLES = {
     'compare':  ['TornText', 'PTorn', 'CompareTable', 'Compare', 'SplitHalftone', 'SwapSymbol'],
     'quote':    ['PoemColumn', 'PPoem', 'InkBehind', 'PunchHeadline', 'TypeBehind', 'TitleCard'],
     'question': ['TalkCard', 'PunchHeadline', 'TitleCard', 'InkBehind', 'PBig'],
-    'prompt':   ['InkPrompt', 'PromptPage'],
-    'product':  ['InkShowcase', 'InkScroll', 'Callouts', 'Analyze'],
+    'prompt':   ['InkPrompt', 'PromptPage', 'WallPrompt'],
+    'product':  ['InkShowcase', 'InkScroll', 'Callouts', 'Analyze', 'CardWall'],
+    'tools':    ['LogoCloud', 'LogoDrop', 'FloatTags'],         # a roundup of apps / tools / brands
+    'showcase': ['InkScroll', 'InkShowcase', 'CardWall', 'Callouts'],   # many screens / works at once
     'process':  ['InkLandscape', 'PRoute', 'Pipeline', 'ListSteps', 'SkillCore', 'Steps'],
-    'cta':      ['InkEnd', 'PEnd', 'EndCard', 'CTA'],
+    'cta':      ['InkEnd', 'PEnd', 'EndCard', 'CTA', 'WallPrompt'],
     'explain':  ['TalkCard', 'InkLandscape', 'PWords', 'TitleCard', 'ListSteps'],
 }
 

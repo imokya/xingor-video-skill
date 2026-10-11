@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>旅行路线预览</title>
+<style>
+  :root { --bg: #111317; --fg: #e8eaee; --muted: #8a909c; --accent: #266cff; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font-family: -apple-system, "PingFang SC", sans-serif; }
+  #wrap { position: absolute; inset: 0 0 64px 0; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+  #stage { position: relative; width: 1920px; height: 1080px; transform-origin: 0 0; overflow: hidden; background: #f4f5f8; }
+  #stage canvas { position: absolute; left: 0; top: 0; }
+  #ui { transform-origin: 0 0; }
+  #bar { position: absolute; left: 0; right: 0; bottom: 0; height: 64px; display: flex; align-items: center; gap: 14px; padding: 0 16px; box-sizing: border-box; background: #1a1d22; }
+  #bar button, #bar select { background: #2a2f38; color: var(--fg); border: 0; border-radius: 8px; height: 36px; padding: 0 14px; font-size: 14px; cursor: pointer; }
+  #bar input[type=range] { flex: 1; accent-color: var(--accent); }
+  #time { font-variant-numeric: tabular-nums; min-width: 128px; color: var(--muted); font-size: 14px; }
+  #loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 18px; }
+</style>
+</head>
+<body>
+<div id="wrap"><div id="stage">
+  <canvas id="bg" width="1920" height="1080"></canvas>
+  <canvas id="globe" width="1920" height="1080"></canvas>
+  <canvas id="map" width="1920" height="1080"></canvas>
+  <canvas id="ui" width="430" height="900"></canvas>
+  <div id="loading">加载地图数据…</div>
+</div></div>
+<div id="bar">
+  <button id="play">播放</button>
+  <input id="seek" type="range" min="0" max="30" step="0.0166667" value="0">
+  <span id="time">0.00 / 30.00 s</span>
+  <select id="speed"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option></select>
+  <button id="loop">循环：开</button>
+</div>
+<script src="player.js"></script>
+</body>
+</html>

@@ -15,6 +15,9 @@ Primitives (draw inside a scene's behind()/front())
     input_box      chat input box typing a prompt, send button pressed on time                  (from 撞色测评)
     table          comparison table: columns rise in, numbers count up, the winner highlighted (from 撞色测评)
     iris           a growing circle with a chromatic fringe (the 'iris' page turn)             (from 撞色测评)
+    app_tile       app-icon tile: white card, plate, logo image or placeholder mark; sub-pixel  (from AI 工具合集)
+    prompt_pill    pill input rises from a blur, types a prompt, collapses into an accent dot   (from AI 工具合集)
+    brand_reveal   a light circle grows from the dot, floods the frame, brand ● name + tagline (from AI 工具合集)
 Templates (Scene subclasses for scenes.py)
     Page           base: themed background ('paper' / 'dark' / 'plain'), presenter optional
     TitleCard      kicker + kinetic title with end dot + sub line (+ optional HUD)
@@ -24,6 +27,12 @@ Templates (Scene subclasses for scenes.py)
     TypeBehind     typewriter text BEHIND the presenter over the real video
     MetalTitle     metallic title with a shine sweep over rotating rings
     Callouts       a screenshot / image card with pointer labels
+    ListSteps      numbered list / steps
+    EndCard        closing line + chips
+    LogoCloud      app / logo tiles turning in a 3D-ish cloud (depth = size, blur, fade), popping in one by one
+    LogoDrop       app / logo tiles falling, bouncing and piling up in two rows on the floor
+    CardWall       a tilted wall of screenshot cards sweeping in with motion blur, then receding into a dim frame
+    WallPrompt     CardWall → prompt typed in a pill → pill collapses to a dot → brand page grows from the dot
 """
 import math
 import numpy as np
@@ -571,4 +580,413 @@ class EndCard(Page):
     def events(self):
         ev = [(t0, 'pop', .5) for t0, _ in self.items]
         if self.big: ev.append((self.big[0], 'impact', .7))
+        return ev
+
+
+# ================================================================ app tiles, card walls, prompt → brand
+# (from the 'AI 工具合集' reference: a logo cloud, logos piling on a desk, a tilted wall of screenshots, and a prompt
+#  pill that collapses into a dot and opens the brand page). All positions / sizes / angles are floats and are drawn
+#  sub-pixel by skia, so slow drifts stay smooth — never round them to ints.
+_IMG = {}
+
+
+def _img(path):
+    if path not in _IMG: _IMG[path] = skia.Image.open(path)
+    return _IMG[path]
+
+
+def _k():
+    """size unit: 1.0 at 720 px tall."""
+    return min(W, H) / 720
+
+
+TILE_COLORS = [(255, 59, 48), (255, 149, 0), (255, 204, 0), (52, 199, 89), (0, 199, 190), (48, 176, 199),
+               (0, 122, 255), (88, 86, 214), (175, 82, 222), (255, 45, 85), (162, 132, 94), (40, 40, 48),
+               (90, 200, 250), (255, 120, 80), (120, 220, 120), (230, 60, 140), (70, 90, 230), (236, 236, 240)]
+
+
+def _glyph(c, kind, r, rgb, a):
+    """placeholder logo mark centred at (0, 0) — used when no logo image is given."""
+    p = paint(rgb, a)
+    if kind == 0: c.drawCircle(0, 0, r, p)
+    elif kind == 1: c.drawCircle(0, 0, r, paint(rgb, a, stroke=r * .32))
+    elif kind == 2:
+        pth = skia.Path(); pth.moveTo(0, -r * 1.1); pth.lineTo(r * 1.05, r * .8); pth.lineTo(-r * 1.05, r * .8); pth.close(); c.drawPath(pth, p)
+    elif kind == 3: c.drawRRect(skia.RRect.MakeRectXY(skia.Rect.MakeXYWH(-r, -r, 2 * r, 2 * r), r * .22, r * .22), p)
+    elif kind == 4:
+        pth = skia.Path(); pth.moveTo(-r * .7, -r); pth.lineTo(r, 0); pth.lineTo(-r * .7, r); pth.close(); c.drawPath(pth, p)
+    elif kind == 5:
+        pth = skia.Path()
+        for i in range(10):
+            ang = -math.pi / 2 + i * math.pi / 5; rr = r * 1.15 if i % 2 == 0 else r * .5
+            (pth.moveTo if i == 0 else pth.lineTo)(rr * math.cos(ang), rr * math.sin(ang))
+        pth.close(); c.drawPath(pth, p)
+    elif kind == 6:
+        for i in range(3):
+            c.drawRRect(skia.RRect.MakeRectXY(skia.Rect.MakeXYWH(-r + i * r * .8, -r + i * r * .3, r * .5, r * (2 - i * .3)), 3, 3), p)
+    elif kind == 7:
+        pth = skia.Path(); pth.moveTo(0, -r * 1.2); pth.lineTo(r, 0); pth.lineTo(0, r * 1.2); pth.lineTo(-r, 0); pth.close(); c.drawPath(pth, p)
+    else:
+        c.drawCircle(-r * .6, 0, r * .45, p); c.drawCircle(r * .6, 0, r * .45, p)
+
+
+def app_tile(c, x, y, size, logo=None, idx=0, angle=0.0, a=1.0, blur=0.0, shadow=True):
+    """an app-icon tile centred at (x, y): white rounded card with a soft shadow, an inner plate with a top highlight,
+    and the logo (image path, cover-fitted) — or, with logo=None, a placeholder mark on TILE_COLORS[idx].
+    angle in degrees; blur > 0 softens the whole tile (depth of field); a fades it."""
+    if a <= .003 or size <= 1: return
+    s = size; r = s * .24; ins = s * .045
+    layer = blur > .15 or a < .999
+    if layer:
+        pad = s + blur * 3
+        lp = skia.Paint(Alphaf=a)
+        if blur > .15: lp.setImageFilter(skia.ImageFilters.Blur(blur, blur))
+        c.saveLayer(skia.Rect.MakeLTRB(x - pad, y - pad, x + pad, y + pad), lp)
+    c.save(); c.translate(x, y); c.rotate(angle)
+    if shadow: rrect(c, -s / 2, -s / 2 + s * .07, s, s, r, (0, 0, 0), .3, blur=s * .08)
+    rrect(c, -s / 2, -s / 2, s, s, r, (248, 248, 250))
+    ir = skia.RRect.MakeRectXY(skia.Rect.MakeXYWH(-s / 2 + ins, -s / 2 + ins, s - 2 * ins, s - 2 * ins), r * .82, r * .82)
+    if logo:
+        img = _img(logo); iw, ih = img.width(), img.height(); q = s - 2 * ins; sc = max(q / iw, q / ih)
+        c.save(); c.clipRRect(ir, skia.ClipOp.kIntersect, True)
+        c.drawRect(ir.rect(), paint((255, 255, 255)))
+        c.drawImageRect(img, skia.Rect.MakeXYWH((iw - q / sc) / 2, (ih - q / sc) / 2, q / sc, q / sc), ir.rect(), SAMP)
+        c.restore()
+    else:
+        base = TILE_COLORS[idx % len(TILE_COLORS)]
+        c.drawRRect(ir, paint(base))
+        hl = skia.GradientShader.MakeLinear([(0, -s / 2), (0, 0)], [CI((255, 255, 255), .28), CI((255, 255, 255), 0)])
+        c.drawRRect(ir, skia.Paint(AntiAlias=True, Shader=hl))
+        gl = (255, 255, 255) if sum(base) < 600 else (60, 60, 70)
+        _glyph(c, idx % 9, s * .2, gl, 1)
+    c.restore()
+    if layer: c.restore()
+
+
+class LogoCloud(Page):
+    """a cloud of app / logo tiles slowly turning about a vertical axis: far tiles are smaller, softer and fainter,
+    every tile bobs and sways on its own, and they pop in one by one from t_in.
+    logos=['a.png', …] (None = n placeholder tiles), n, center=(x, y) (default slightly left of centre),
+    radius, size=(far, near) px, spin (rad/s), stagger (s between pops), t_in (default t0 + .1)."""
+    logos = None
+    n = 18
+    center = None
+    radius = None
+    size = None
+    spin = .35
+    stagger = .08
+    t_in = None
+
+    def _tin(self):
+        return self.t_in if self.t_in is not None else self.t0 + .1
+
+    def front(self, c, t, ctx):
+        a = self.a(t); k = _k()
+        logos = list(self.logos or [None] * self.n); N = len(logos)
+        cx, cy = self.center or (W * .47, H * .42)
+        R = self.radius or 230 * k
+        sf, sn = self.size or (70 * k, 130 * k)
+        items = []
+        for i, lg in enumerate(logos):
+            yv = 1 - 2 * (i + .5) / N; rr = math.sqrt(max(0.0, 1 - yv * yv))
+            th0 = i * math.pi * (3 - math.sqrt(5)); ph = (i * 2.399) % 6.283
+            ang = th0 + (t - self.t0) * self.spin
+            depth = (math.cos(ang) * rr + 1) / 2                  # 0 far .. 1 near
+            p = clamp((t - self._tin() - i * self.stagger) / .5)
+            if p <= 0: continue
+            sz = lerp(sf, sn, depth) * eob(p, 1.7)
+            x = cx + math.sin(ang) * rr * R * 1.25
+            y = cy - yv * R * .95 + math.sin(t * 1.6 + ph) * 8 * k
+            items.append((depth, i, lg, sz, x, y, math.sin(t * 1.1 + ph) * 6,
+                          max(0.0, 1 - depth * 1.4) * 4 * k, (.45 + .55 * depth) * min(1, p * 2)))
+        for depth, i, lg, sz, x, y, tilt, bl, al in sorted(items, key=lambda q: q[0]):
+            app_tile(c, x, y, sz, lg, i, tilt, a * al, bl)
+
+    def events(self):
+        N = len(self.logos or [None] * self.n)
+        return [(self._tin() + i * self.stagger, 'pop', .25) for i in range(0, N, 3)]
+
+
+class LogoDrop(Page):
+    """app / logo tiles drop from above one after another, spin as they fall, bounce twice and settle into two rows
+    on the floor (a back row and a front row, two landing on top, a few tilted), each casting a shadow that firms up
+    as it lands. logos=[…] (None = n placeholders), n, t_drop (first drop, default t0 + .15), interval (s),
+    floor_y (front row bottom edge, default .89 H), size (front tile px), seed (layout / order)."""
+    logos = None
+    n = 18
+    t_drop = None
+    interval = .13
+    floor_y = None
+    size = None
+    seed = 7
+    _plan = None
+
+    def plan(self):
+        if self._plan is not None: return self._plan
+        import random
+        rnd = random.Random(self.seed); k = _k()
+        logos = list(self.logos or [None] * self.n); N = len(logos)
+        s = self.size or 104 * k; fy = self.floor_y or H * .89
+        extra = min(2, max(0, N - 6)); nf = max(1, math.ceil((N - extra) * .62)); nb = N - extra - nf
+        plan = []
+        x0 = W / 2 - (nf - 1) * s * 1.04 / 2
+        fxs = [x0 + j * s * 1.04 for j in range(nf)]
+        for x in fxs: plan.append(dict(layer=1, x=x + rnd.uniform(-6, 6) * k, floor=fy, size=s, rest=rnd.choice([0, 0, 0, -8, 9])))
+        sb = s * .87; xb = W / 2 - (nb - 1) * sb * 1.22 / 2
+        for j in range(nb): plan.append(dict(layer=0, x=xb + j * sb * 1.22 + rnd.uniform(-6, 6) * k, floor=fy - s * .78, size=sb, rest=rnd.choice([0, 0, 6, -10])))
+        for j in range(extra):
+            base = fxs[min(len(fxs) - 1, [1, len(fxs) - 3][j % 2] if len(fxs) > 3 else 0)]
+            plan.append(dict(layer=2, x=base + s * .45 * (1 if j % 2 == 0 else -.1), floor=fy - s, size=s * .93, rest=[14, -18][j % 2]))
+        order = list(range(len(plan))); rnd.shuffle(order)
+        t_drop = self.t_drop if self.t_drop is not None else self.t0 + .15
+        for kk, j in enumerate(order):
+            plan[j].update(t0=t_drop + kk * self.interval, spin=rnd.uniform(-160, 160), logo=logos[j % N], idx=j)
+        self._plan = plan
+        return plan
+
+    def _state(self, p, t):
+        g = 2600 * _k(); tt = t - p['t0']
+        if tt < 0: return None
+        start = -p['size']; h = p['floor'] - start; tf = math.sqrt(2 * h / g)
+        if tt < tf:
+            return start + .5 * g * tt * tt, p['rest'] + p['spin'] * (1 - tt / tf)
+        tb = tt - tf; v0 = g * tf * .28; y = p['floor']
+        for _ in range(2):                                         # two damped bounces
+            dur = 2 * v0 / g
+            if tb < dur: y = p['floor'] - (v0 * tb - .5 * g * tb * tb); break
+            tb -= dur; v0 *= .35
+        settle = clamp((tt - tf) / .35)
+        return y, p['rest'] + math.sin(settle * math.pi * 2) * (1 - settle) * 10
+
+    def land_times(self):
+        g = 2600 * _k()
+        return [p['t0'] + math.sqrt(2 * (p['floor'] + p['size']) / g) for p in self.plan()]
+
+    def front(self, c, t, ctx):
+        a = self.a(t); k = _k(); drawn = []
+        for p in self.plan():
+            st = self._state(p, t)
+            if st is None: continue
+            y, ang = st
+            if p['layer'] < 2:
+                near = clamp(1 - (p['floor'] - y) / (400 * k)); sw = p['size'] * (.6 + .4 * near)
+                c.drawOval(skia.Rect.MakeXYWH(p['x'] - sw / 2, p['floor'] - 10 * k, sw, 20 * k), paint((0, 0, 0), .4 * near * a, blur=6 * k))
+            drawn.append((p['layer'], p, y, ang))
+        for _, p, y, ang in sorted(drawn, key=lambda d: d[0]):
+            app_tile(c, p['x'], y - p['size'] / 2, p['size'], p['logo'], p['idx'], ang, a)
+
+    def events(self):
+        return [(lt, 'pop', .22) for lt in self.land_times()]
+
+
+class CardWall(Page):
+    """a tilted wall of screenshot cards sweeps in fast (motion blur), slows and settles while easing back from a slight
+    zoom; at `recede` it shrinks into a rounded frame, darkens and blurs, so a prompt or a title can sit on top.
+    cards=['shot1.png', …] (cover-fitted; None = placeholder cards), angle (deg), t_settle (s the sweep takes),
+    travel (px, default 2.1 H), recede (time or None), recede_dur, seed."""
+    cards = None
+    angle = -28
+    t_settle = 3.2
+    travel = None
+    recede = None
+    recede_dur = .6
+    seed = 3
+    _pic = None
+
+    def _picture(self):
+        if self._pic is not None: return self._pic
+        import random
+        rnd = random.Random(self.seed); k = _k(); th = TH()
+        cw, ch, gap = 400 * k, 260 * k, 34 * k
+        D = math.hypot(W, H); trav = self.travel or H * 2.1
+        cols = int(D / (cw + gap)) + 3; rows = int((D + trav) / (ch + gap)) + 4
+        ww, wh = cols * (cw + gap), rows * (ch + gap)
+        rec = skia.PictureRecorder(); c = rec.beginRecording(skia.Rect.MakeXYWH(-ww / 2, -wh / 2, ww, wh))
+        cards = list(self.cards or []); ci = 0
+        styles = [((250, 250, 252), th.accent), ((22, 26, 24), (90, 220, 120)), ((242, 236, 222), (120, 100, 80)),
+                  ((30, 32, 40), (120, 150, 255)), ((255, 255, 255), (230, 70, 60)), ((60, 40, 30), (255, 190, 120))]
+        for cx_ in range(cols):
+            off = (cx_ % 2) * (ch + gap) / 2
+            for ry in range(rows):
+                x = -ww / 2 + cx_ * (cw + gap); y = -wh / 2 + ry * (ch + gap) + off
+                rr = skia.RRect.MakeRectXY(skia.Rect.MakeXYWH(x, y, cw, ch), 16 * k, 16 * k)
+                if cards:
+                    img = _img(cards[ci % len(cards)]); ci += 1
+                    iw, ih = img.width(), img.height(); sc = max(cw / iw, ch / ih)
+                    c.save(); c.clipRRect(rr, skia.ClipOp.kIntersect, True)
+                    c.drawImageRect(img, skia.Rect.MakeXYWH((iw - cw / sc) / 2, (ih - ch / sc) / 2, cw / sc, ch / sc), rr.rect(), SAMP)
+                    c.restore()
+                    continue
+                bg, acc = rnd.choice(styles); c.drawRRect(rr, paint(bg))
+                ln = (255, 255, 255) if sum(bg) < 300 else (0, 0, 0); la = .24 if sum(bg) < 300 else .16
+                kind = rnd.randint(0, 3)
+                if kind == 0:
+                    rrect(c, x + 30 * k, y + 34 * k, rnd.uniform(140, 240) * k, 22 * k, 6 * k, acc)
+                    for j in range(5): rrect(c, x + 30 * k, y + (84 + j * 28) * k, cw - (60 + rnd.uniform(0, 120)) * k, 12 * k, 5 * k, ln, la)
+                elif kind == 1:
+                    rrect(c, x + 30 * k, y + 30 * k, cw - 60 * k, 140 * k, 12 * k, acc)
+                    rrect(c, x + 30 * k, y + 194 * k, 190 * k, 16 * k, 5 * k, ln, la); rrect(c, x + 30 * k, y + 222 * k, 130 * k, 14 * k, 5 * k, ln, la)
+                elif kind == 2:
+                    circle(c, x + cw / 2, y + ch / 2 - 10 * k, 46 * k, acc)
+                    rrect(c, x + cw / 2 - 70 * k, y + ch / 2 + 54 * k, 140 * k, 14 * k, 5 * k, ln, la)
+                else:
+                    rrect(c, x + 30 * k, y + 18 * k, 120 * k, 12 * k, 5 * k, acc)
+                    for gx in range(3):
+                        for gy in range(2): rrect(c, x + (30 + gx * 118) * k, y + (40 + gy * 100) * k, 100 * k, 80 * k, 10 * k, ln, la)
+        self._pic = rec.finishRecordingAsPicture()
+        return self._pic
+
+    def _scroll(self, t):
+        trav = self.travel or H * 2.1
+        p = clamp((t - self.t0) / self.t_settle)
+        return trav * (1 - (1 - p) ** 4) - trav / 2 + max(0.0, t - self.t0 - self.t_settle) * 18 * _k()
+
+    def _wall(self, c, t, extra=1.0):
+        pic = self._picture()
+        sc = lerp(1.18, 1.0, eo(clamp((t - self.t0) / self.t_settle))) * extra
+        v = abs(self._scroll(t + 1 / 60) - self._scroll(t)) * 60
+        sigma = v * (1.6 / 60) / 2.5                                # motion blur along the scroll axis (~1/37 s shutter)
+        c.save(); c.translate(W / 2, H / 2); c.scale(sc, sc); c.rotate(self.angle)
+        if sigma > .6:
+            c.saveLayer(None, skia.Paint(ImageFilter=skia.ImageFilters.Blur(.01, sigma, skia.TileMode.kClamp)))
+        c.translate(0, -self._scroll(t)); c.drawPicture(pic)
+        if sigma > .6: c.restore()
+        c.restore()
+
+    def _recede_k(self, t):
+        return eio(P(t, self.recede, self.recede_dur)) if self.recede is not None else 0.0
+
+    def behind(self, c, t, ctx):
+        k = self._recede_k(t)
+        if k <= 0:
+            self._wall(c, t); return
+        s = lerp(1.0, .87, k); r = 28 * _k() * k
+        frame = skia.RRect.MakeRectXY(skia.Rect.MakeXYWH(W * (1 - s) / 2, H * (1 - s) / 2, W * s, H * s), r, r)
+        c.save(); c.clipRRect(frame, skia.ClipOp.kIntersect, True)
+        bl = 7 * _k() * k
+        c.saveLayer(None, skia.Paint(ImageFilter=skia.ImageFilters.Blur(bl, bl)) if bl > .2 else None)
+        self._wall(c, t, s)
+        c.restore()
+        c.drawRect(skia.Rect.MakeWH(W, H), paint((0, 0, 0), .5 * k))
+        c.restore()
+
+    def events(self):
+        ev = [(self.t0 + .02, 'whoosh', .7)]
+        if self.recede is not None: ev.append((self.recede, 'swish', .4))
+        return ev
+
+
+def _light_dark():
+    th = TH(); cols = [th.bg, th.surface, th.ink, (248, 246, 240)]
+    return max(cols, key=KT.luminance), min(cols, key=KT.luminance)
+
+
+def _dot_rgb(light):
+    th = TH()
+    return max([th.accent, th.accent2], key=lambda q: KT.contrast(q, light))
+
+
+def prompt_pill(c, t, prompt, t_in, t_type, t_collapse, cx=None, cy=None, w=None, h=None, a=1.0):
+    """a pill-shaped input box rises out of a blur (t_in), types `prompt` over t_type=(start, end) behind an accent
+    caret, then at t_collapse the text fades, the pill shrinks to a circle, turns accent-coloured with a glow and
+    shrinks to a dot that stays (for brand_reveal to grow from). Light pill, dark text, whatever the theme."""
+    k = _k(); cx = W / 2 if cx is None else cx; cy = H / 2 if cy is None else cy
+    w = w or 520 * k; h = h or 80 * k
+    light, dark = _light_dark(); dot = _dot_rgb(light)
+    pin = eo(P(t, t_in, .5))
+    if pin <= 0: return
+    T = t_collapse
+    sh = eio(P(t, T + .2, .4)); red = eio(P(t, T + .5, .25)); shrink = P(t, T + .7, .35) ** 3
+    pw = lerp(lerp(w * .92, w, pin), h, sh)
+    sz = lerp(1.0, .2, shrink); pw, ph = pw * sz, h * sz
+    col = tuple(int(lerp(a_, b_, red)) for a_, b_ in zip(light, dot))
+    bl = lerp(10 * k, 0, pin)
+    lp = skia.Paint(Alphaf=a * pin)
+    if bl > .2: lp.setImageFilter(skia.ImageFilters.Blur(bl, bl))
+    c.saveLayer(None, lp)
+    if red > 0: circle(c, cx, cy, max(pw, ph) * .9, dot, .55 * red, blur=18 * k * sz + 6 * k)
+    else: rrect(c, cx - pw / 2, cy - ph / 2 + 8 * k, pw, ph, ph / 2, (0, 0, 0), .35, blur=14 * k)
+    rrect(c, cx - pw / 2, cy - ph / 2, pw, ph, ph / 2, col)
+    ta = 1 - P(t, T, .25)
+    if ta > 0 and sh < .05:
+        f = F(TH().font('body'), h * .4)
+        n = int(len(prompt) * clamp((t - t_type[0]) / max(.01, t_type[1] - t_type[0]))) if t >= t_type[0] else 0
+        s = prompt[:n]; x0 = cx - pw / 2 + h * .48; base = cy + h * .14
+        text(c, s, x0, base, f, dark, ta)
+        if t_type[0] <= t <= t_type[1] + .1 or int(t * 2.2) % 2 == 0:
+            lx = x0 + tw(s, f) + 4 * k
+            rrect(c, lx, cy - h * .24, 3 * k, h * .48, 1, dot, ta)
+    c.restore()
+
+
+def brand_reveal(c, t, t_grow, left, right, tagline='', cx=None, cy=None):
+    """a light circle grows out of the accent dot at (cx, cy) with two faint ripple rings, then floods the frame; the
+    brand opens on the light page as `left` ● `right` spreading out from the dot, with `tagline` fading in under it."""
+    k = _k(); cx = W / 2 if cx is None else cx; cy = H / 2 if cy is None else cy
+    light, dark = _light_dark(); dot = _dot_rgb(light)
+    g1 = eo(P(t, t_grow, .5)); g2 = P(t, t_grow + .5, .5) ** 3
+    r = lerp(8 * k, 56 * k, g1); r = lerp(r, math.hypot(W, H) / 2 + 20, g2)
+    if g1 > 0 and g2 < 1: circle(c, cx, cy + 10 * k, r, (0, 0, 0), .4, blur=16 * k)
+    if g1 > 0:
+        c.save(); pth = skia.Path(); pth.addCircle(cx, cy, r); c.clipPath(pth, skia.ClipOp.kIntersect, True)
+        c.drawRect(skia.Rect.MakeWH(W, H), paint(light))
+        vg = skia.GradientShader.MakeRadial((cx, cy), math.hypot(W, H) * .62, [CI(dark, 0), CI(dark, .1)])
+        c.drawRect(skia.Rect.MakeWH(W, H), skia.Paint(Shader=vg))
+        kb = eo(P(t, t_grow + .55, .7))
+        if kb > 0:
+            th = TH(); fb = F(th.font('display'), 92 * k)
+            gap = 55 * k * lerp(.6, 1, kb)
+            tcol = tuple(int(lerp(a_, b_, kb)) for a_, b_ in zip(light, dark))
+            yb = cy + fb.getSize() * .36
+            text(c, left, cx - gap, yb, fb, tcol, align='r')
+            text(c, right, cx + gap, yb, fb, tcol)
+            if tagline:
+                ka = clamp(kb * 1.3 - .3)
+                text(c, tagline, cx, cy + 108 * k, F(th.font('body'), 30 * k), KT.mix(light, dark, .55), ka, align='c')
+        c.restore()
+    if 0 < g1 and g2 < .3:
+        for q in (.35, .65): circle(c, cx, cy, r * q, dot, .2, stroke=2 * k)
+    rd = 8 * k if g2 < 1 else lerp(8 * k, 16 * k, eo(P(t, t_grow + .55, .7)))
+    circle(c, cx, cy, rd * 2.2, dot, .4, blur=rd * 1.2)
+    circle(c, cx, cy, rd, dot)
+
+
+class WallPrompt(CardWall):
+    """CardWall, then a prompt over the receded wall that turns into the brand page:
+    prompt=(t_type0, t_type1, '你想让什么动起来？'), t_in (pill appears, default t_type0 - .6),
+    collapse (default t_type1 + .5), brand=(t, '品牌', '副名'), tagline='…'. recede defaults to t_in - .6."""
+    prompt = None
+    t_in = None
+    collapse = None
+    brand = None
+    tagline = ''
+
+    def _times(self):
+        p0, p1, s = self.prompt
+        t_in = self.t_in if self.t_in is not None else p0 - .6
+        col = self.collapse if self.collapse is not None else p1 + .5
+        bt = self.brand[0] if self.brand else col + 1.6
+        return t_in, col, bt - .55
+
+    def __init__(self, t0, t1, **kw):
+        super().__init__(t0, t1, **kw)
+        if self.recede is None and self.prompt: self.recede = self._times()[0] - .6
+
+    def front(self, c, t, ctx):
+        if not self.prompt: return
+        t_in, col, tg = self._times()
+        if t < tg:
+            prompt_pill(c, t, self.prompt[2], t_in, self.prompt[:2], col)
+            if t >= col + 1.05:
+                k = _k(); light, _ = _light_dark(); dot = _dot_rgb(light)
+                circle(c, W / 2, H / 2, 8 * k * 2.2, dot, .4, blur=8 * k * 1.2); circle(c, W / 2, H / 2, 8 * k, dot)
+        elif self.brand:
+            brand_reveal(c, t, tg, self.brand[1], self.brand[2], self.tagline)
+
+    def events(self):
+        ev = super().events()
+        if self.prompt:
+            t_in, col, tg = self._times()
+            ev += [(t_in, 'pop', .4), (self.prompt[0], 'pop', .25), (col + .2, 'swish', .5), (col + .7, 'pop', .4), (tg, 'whoosh', .6)]
+            if self.brand: ev.append((tg + .55, 'impact', .7))
         return ev

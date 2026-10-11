@@ -74,12 +74,25 @@ Give every sentence a role, then take the first component that fits the characte
 | a question / thesis | `InkBehind`, `TalkCard(theme='ink')` | `TalkCard(theme='dark'/'paper')`, `PunchHeadline` | `TalkCard(theme='paper')` |
 | a prompt / what to type | `InkPrompt` | `PromptPage` | `PromptPage` (editorial) |
 | a product / screen / footage | `InkShowcase`, `InkScroll` | `Callouts`, `Analyze` | `Callouts` |
+| a roundup of tools / apps / brands | design one (seal-stamped names on paper) | `LogoCloud`, `LogoDrop` | `LogoCloud`, `LogoDrop` (`FloatTags` playful) |
+| many screens / works at once | `InkScroll`, `InkShowcase` | `CardWall` | `CardWall` (editorial, cinematic) |
+| prompt → brand / product name | `InkPrompt` | `WallPrompt` | `WallPrompt` (editorial) |
 | a process / chain | `InkLandscape`, `PRoute` | `Pipeline`, `ListSteps`, `SkillCore` | `ListSteps` |
 | call to action | `InkEnd`, `PEnd` | `EndCard`, `CTA` | `EndCard` |
 
 Where they live: `scripts/components.py` (NEON family), `scripts/ink.py` (paper family + `P*` layouts + showcase),
 `scripts/kit/blocks.py` (theme-neutral: `TitleCard`, `BigStat`, `CompareTable`, `PromptPage`, `TypeBehind`,
-`MetalTitle`, `Callouts`, `ListSteps`, `EndCard`, and primitives). Read a template's docstring before using it.
+`MetalTitle`, `Callouts`, `ListSteps`, `EndCard`, `LogoCloud`, `LogoDrop`, `CardWall`, `WallPrompt`, and primitives).
+Read a template's docstring before using it.
+
+```python
+LogoCloud(12.0, 17.0, logos=['logos/youtube.png', 'logos/bilibili.png', …])   # None = placeholder tiles
+LogoDrop(17.0, 21.5, logos=[…], interval=.13)                                 # piles up in two rows
+WallPrompt(40.0, 50.0, cards=['shots/1.png', …], prompt=(44.4, 46.0, '你想让什么动起来？'),
+           collapse=46.5, brand=(48.3, '品牌', '副名'), tagline='一句标语')        # cards=None = placeholder cards
+```
+Logos and screenshots are files the user supplies (don't download brand logos yourself). The pill is always light
+with dark text; the dot takes the theme accent (or accent2 when the accent is too pale on the light pill).
 
 Rhythm: change scene every 3–6 s for snappy, 4–9 s for calm; alternate full-frame and page scenes; trigger visuals on
 the spoken word (≈0.05 s before it); put boundaries in the gaps between sentences.
@@ -106,6 +119,9 @@ your report. That is how the library grows.
 - Text must be readable before anything covers it: a page holds until its last line was readable (~1 s).
 - Credits, small labels and seals sit on a clean patch of paper / surface — never on top of decoration.
 - Keep visuals in sync with the voice; slow entrances must not lag the words.
+- Slow drifts and turns must be smooth: keep positions, sizes and angles as floats (skia draws them sub-pixel) and
+  fade blur in continuously — rounding to whole pixels / degrees or stepping blur makes slow motion judder.
+- Motion blur on fast sweeps is a directional blur along the motion axis, not stacked copies (they read as ghosts).
 - Big background characters / decoration go to the side, never behind the main text.
 - One accent colour; everything else is ink in different strengths.
 
