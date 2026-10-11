@@ -2,6 +2,7 @@
 import math, random
 import numpy as np
 import skia
+from kit.motion import clamp, P, eo, eio, eob, eexp, window, lerp, spring
 
 W, H = 1920, 1080
 try:   # canvas size of the current work dir (analyze.py --size), e.g. 1080x1440 for 3:4
@@ -18,40 +19,6 @@ VIOLET = (150, 92, 255)
 INK = (5, 7, 13)
 WHITE = (255, 255, 255)
 GREY = (150, 158, 175)
-
-
-def clamp(x, a=0.0, b=1.0):
-    return a if x < a else b if x > b else x
-
-
-def P(t, t0, d=0.4):
-    """normalized progress of an animation starting at t0 lasting d."""
-    return clamp((t - t0) / d) if d > 0 else float(t >= t0)
-
-
-def eo(x):  # ease out cubic
-    x = clamp(x); return 1 - (1 - x) ** 3
-
-
-def eio(x):
-    x = clamp(x); return 4 * x ** 3 if x < .5 else 1 - (-2 * x + 2) ** 3 / 2
-
-
-def eob(x, s=1.9):  # ease out back
-    x = clamp(x); return 1 + (s + 1) * (x - 1) ** 3 + s * (x - 1) ** 2
-
-
-def eexp(x):
-    x = clamp(x); return 1 if x >= 1 else 1 - 2 ** (-10 * x)
-
-
-def window(t, t0, t1, fi=0.25, fo=0.25):
-    """1 inside [t0,t1] with fades."""
-    return clamp(min((t - t0) / fi if fi else 1, (t1 - t) / fo if fo else 1))
-
-
-def lerp(a, b, x):
-    return a + (b - a) * x
 
 
 def C(rgb, a=1.0):

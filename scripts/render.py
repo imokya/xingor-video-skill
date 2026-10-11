@@ -34,10 +34,15 @@ AUDIO_ONLY = META.get('audio_only', False)
 spec = importlib.util.spec_from_file_location('project_scenes', os.path.join(os.getcwd(), 'scenes.py'))
 PROJ = importlib.util.module_from_spec(spec); spec.loader.exec_module(PROJ)
 
-# visual theme: 'neon' (default, NEON LAB) or 'poetry-ink' (诗墨国风, see references/poetry-ink.md)
-THEME = getattr(PROJ, 'THEME', 'neon')
-INK = THEME in ('poetry-ink', 'ink')
 import ink as IK
+import kit.sfx as SFX
+import kit.transitions as KTR
+import kit.theme as KT
+
+# visual theme (kit.theme): a preset name ('neon' default, 'poetry-ink'), a dict of overrides, or a designed Theme
+THEME = getattr(PROJ, 'THEME', 'neon')
+TH = KT.resolve(THEME)
+INK = TH.family == 'ink'
 
 # ------------------------------------------------------------------ edit list: shrink long pauses
 removed = set()
@@ -220,52 +225,6 @@ def envelope(a):
     return r / (np.percentile(r, 98) + 1e-9)
 
 
-RNG = np.random.RandomState(7)
-
-
-def band_sweep(d, f0, f1, nb=24):
-    n = int(d * SR); noise = RNG.randn(n); out = np.zeros(n)
-    blk = n // nb * 2; hop = blk // 2; win = np.hanning(blk)
-    for b in range(nb * 2):
-        i0 = b * hop
-        if i0 + blk > n: break
-        Fq = np.fft.rfft(noise[i0:i0 + blk] * win); fr = np.fft.rfftfreq(blk, 1 / SR)
-        fc = f0 * (f1 / f0) ** (b / (nb * 2))
-        Fq *= np.exp(-((np.log(fr + 1) - np.log(fc)) ** 2) / (2 * .5 ** 2))
-        out[i0:i0 + blk] += np.fft.irfft(Fq, blk)
-    return out / (np.abs(out).max() + 1e-9)
-
-
-def synth(kind, var=0):
-    """var picks a variation (pitch / noise seed) for the poetry-ink sounds; neon sounds ignore it."""
-    if INK: kind = IK.SFX_MAP.get(kind, kind)
-    if kind in ('pluck', 'bell', 'drop', 'breeze', 'brush', 'seal', 'gliss', 'tear'):
-        import ink as IK_
-        return IK_.synth(kind, var)
-    if kind == 'whoosh':
-        x = band_sweep(.55, 300, 4000); t = np.linspace(0, 1, len(x)); return x * np.sin(np.pi * t ** 1.4) ** 2 * .6
-    if kind == 'swish':
-        x = band_sweep(.25, 1500, 7000); t = np.linspace(0, 1, len(x)); return x * np.sin(np.pi * t) ** 2 * .5
-    if kind == 'riser':
-        x = band_sweep(1.0, 400, 6000); t = np.linspace(0, 1, len(x))
-        return (x * .6 + np.sin(2 * np.pi * np.cumsum(200 + 700 * t ** 2) / SR) * .25) * t ** 2 * .7
-    if kind == 'impact':
-        t = np.arange(int(.9 * SR)) / SR
-        body = np.sin(2 * np.pi * np.cumsum(45 + 90 * np.exp(-t * 12)) / SR) * np.exp(-t * 4.5)
-        click = np.convolve(RNG.randn(len(t)) * np.exp(-t * 60) * .5, np.ones(8) / 8, 'same')
-        return np.tanh((body + click) * 1.6) * .9
-    if kind == 'pop':
-        d = .12; t = np.arange(int(d * SR)) / SR
-        return np.sin(2 * np.pi * np.cumsum(1100 - 500 * t / d) / SR) * np.exp(-t * 45) * .55
-    if kind == 'glitch':
-        n = int(.22 * SR); x = np.zeros(n)
-        for _ in range(7):
-            i0 = RNG.randint(0, n - 1500); L = RNG.randint(300, 1500); fq = RNG.choice([220, 440, 880, 1760])
-            x[i0:i0 + L] += np.sign(np.sin(2 * np.pi * fq * np.arange(L) / SR)) * .3
-        return np.round(x * 6) / 6 * .5
-    raise ValueError(kind)
-
-
 def build_audio(a, sfx_list, sfx_gain=.22, bgm=None, bgm_gain=.12):
     spf = SR // FPS
     runs_ = []; s = KEPT[0]; p = s
@@ -366,6 +325,30 @@ def scene_at(scs, st):
 class Ctx: pass
 
 
+def synth(kind, var=0):
+    """one sound from the active theme's palette (see kit.sfx)."""
+    return SFX.synth(kind, var, IK.SFX_MAP if INK else None)
+
+
+def ink_windows(scs):
+    return KTR.ink_windows(scs, IK.TURN)
+
+
+def ink_state(scs, st):
+    return KTR.ink_state(scs, st, IK.TURN)
+
+
+def ink_freeze(scs, sc, st):
+    return KTR.ink_freeze(scs, sc, st, IK.TURN)
+
+
+def lime_wipe(c, d):
+    KTR.lime_wipe(c, d, TH.accent, WHITE)
+
+
+rgb_glitch = KTR.rgb_glitch
+
+
 def draw_stack(c, sc, st, img, cutimg, ctx):
     """one scene: background (video / dark / paper) -> behind() -> rim + person cutout -> front()."""
     xf = sc.xf(st)
@@ -398,55 +381,6 @@ def draw_stack(c, sc, st, img, cutimg, ctx):
         if tone > 0:
             draw_img(c, cutimg(), xf, skia.Paint(Alphaf=clamp(tone), ColorFilter=IK.tone_filter()))
     sc.front(c, st, ctx)
-
-
-_INKWIN = {}
-_AMBIENT = ('breeze', 'gliss', 'whoosh', 'riser')
-
-
-def ink_windows(scs):
-    """poetry-ink page-turn windows, timed from the content: the turn waits until the old page's last line has
-    been readable for 1.0 s (0.5 s after a seal), and tries to finish by the new page's first line (shrinking to
-    0.7 s if the gap is tight). -> list aligned with scs: None or (start, end)."""
-    if id(scs) in _INKWIN: return _INKWIN[id(scs)]
-    if IK.TURN != 'ink':   # 'punch' / 'cut': no ink page turns
-        _INKWIN[id(scs)] = [None] * len(scs); return _INKWIN[id(scs)]
-    ev = lambda sc: [(t, k) for t, k, g in sc.events() if t > sc.t0 + .2 and k not in _AMBIENT]
-    wins = [None]
-    for i, nx in enumerate(scs[1:], 1):
-        pv = scs[i - 1]
-        if getattr(nx, 'smooth_in', False):
-            wins.append(None); continue
-        ready = max([t + (.5 if k == 'seal' else 1.0) for t, k in ev(pv)] + [pv.t0 + 1.0, getattr(pv, 'ready_t', lambda: 0)()])
-        first = min([t for t, k in ev(nx)] + [nx.t0 + .8])
-        start = max(ready, nx.t0 - .9)
-        D = 1.0
-        if start + D > first + .15: D = max(.7, first + .15 - start)
-        start = min(start, nx.t1 - D - .2)
-        wins.append((start, start + D))
-    _INKWIN[id(scs)] = wins
-    return wins
-
-
-def ink_state(scs, st):
-    """-> (prev, next|None, d, half, seed) while a page is turning (next=None: the cut has passed but the old
-    page is still being read), else None."""
-    wins = ink_windows(scs)
-    for i in range(1, len(scs)):
-        w = wins[i]
-        if w is None: continue
-        s0, s1 = w
-        if s0 <= st < s1: return scs[i - 1], scs[i], st - (s0 + s1) / 2, (s1 - s0) / 2, i
-        if scs[i].t0 <= st < s0: return scs[i - 1], None, 0, 0, i
-    return None
-
-
-def ink_freeze(scs, sc, st):
-    """an outgoing page holds its final state (no end-of-scene fade) until the ink covers it."""
-    k = scs.index(sc)
-    if k + 1 < len(scs) and ink_windows(scs)[k + 1] is not None:
-        return min(st, getattr(sc, 'hold_t', lambda: sc.t1 - .32)())
-    return st
 
 
 def render_frame(surface, st, ot, frame, matte, ctx):
@@ -492,7 +426,7 @@ def render_frame(surface, st, ot, frame, matte, ctx):
             c.save(); c.translate(W / 2, H / 2); c.scale(s_, s_); c.translate(-W / 2, -H / 2)
             draw_stack(c, sc, st, img, cutimg, ctx)
             c.restore()
-            c.drawRect(skia.Rect.MakeWH(W, H), paint(IK.XUAN_L, .55 * (1 - u) ** 2))
+            c.drawRect(skia.Rect.MakeWH(W, H), paint(TH.surface, .55 * (1 - u) ** 2))
         else:
             draw_stack(c, sc, st, img, cutimg, ctx)
     elif INK:
@@ -503,18 +437,14 @@ def render_frame(surface, st, ot, frame, matte, ctx):
         IK.bottom_mist(c, .62 if sc.mode == 'full' else .9)
         draw_caption(c, st, ctx.captions)
         if HOOK: draw_hook_bridge(c, ot)
-        c.drawRect(skia.Rect.MakeXYWH(0, 0, W * ot / ctx.dur, 3), paint(IK.ZHU, .75))
+        c.drawRect(skia.Rect.MakeXYWH(0, 0, W * ot / ctx.dur, 3), paint(TH.accent, .75))
         if ot > ctx.dur - .8:
-            c.drawRect(skia.Rect.MakeWH(W, H), paint(IK.XUAN, (ot - (ctx.dur - .8)) / .8))
+            c.drawRect(skia.Rect.MakeWH(W, H), paint(TH.bg, (ot - (ctx.dur - .8)) / .8))
         return surface.makeImageSnapshot().toarray(colorType=skia.kRGBA_8888_ColorType)
     for i, nx in enumerate(ctx.scenes[1:], 1):
         d = st - nx.t0
         if abs(d) < .3 and ctx.scenes[i - 1].mode != nx.mode and not getattr(nx, 'smooth_in', False):
-            bx = lerp(-700, W + 300, eio((d + .3) / .6))
-            pth = skia.Path(); pth.moveTo(bx, 0); pth.lineTo(bx + 340, 0); pth.lineTo(bx + 40, H); pth.lineTo(bx - 300, H); pth.close()
-            c.drawPath(pth, paint(LIME, .95))
-            p2 = skia.Path(); p2.moveTo(bx + 380, 0); p2.lineTo(bx + 420, 0); p2.lineTo(bx + 120, H); p2.lineTo(bx + 80, H); p2.close()
-            c.drawPath(p2, paint(WHITE, .8))
+            lime_wipe(c, d)
     draw_caption(c, st, ctx.captions)
     if HOOK: draw_hook_bridge(c, ot)
     c.drawRect(skia.Rect.MakeXYWH(0, 0, W * ot / ctx.dur, 4), paint(LIME, .9))
@@ -528,24 +458,6 @@ def render_frame(surface, st, ot, frame, matte, ctx):
     if HOOK and ot < .14:
         rgb_glitch(out, 1 - ot / .14, int(ot * 1000) + 7)
     return out
-
-
-def lime_wipe(c, d):
-    """diagonal lime band; d = seconds relative to the cut (-.3 .. .3)"""
-    bx = lerp(-700, W + 300, eio((d + .3) / .6))
-    pth = skia.Path(); pth.moveTo(bx, 0); pth.lineTo(bx + 340, 0); pth.lineTo(bx + 40, H); pth.lineTo(bx - 300, H); pth.close()
-    c.drawPath(pth, paint(LIME, .95))
-    p2 = skia.Path(); p2.moveTo(bx + 380, 0); p2.lineTo(bx + 420, 0); p2.lineTo(bx + 120, H); p2.lineTo(bx + 80, H); p2.close()
-    c.drawPath(p2, paint(WHITE, .8))
-
-
-def rgb_glitch(out, g, seed):
-    sh = int(24 * g)
-    out[..., 0] = np.roll(out[..., 0], sh, 1); out[..., 2] = np.roll(out[..., 2], -sh, 1)
-    r = np.random.RandomState(seed)
-    for _ in range(int(6 * g)):
-        y0 = r.randint(0, H - 60); hh = r.randint(8, 60)
-        out[y0:y0 + hh] = np.roll(out[y0:y0 + hh], r.randint(-80, 80), 1)
 
 
 def render_hook_frame(surface, hf, frame, matte, ctx):
@@ -621,7 +533,7 @@ def render_hook_frame_ink(surface, hf, frame, matte, ctx):
         else:
             IK.ink_bg(c, ht)
             IK.moon(c, ht, W * .76, H * .2, min(W, H) * .1, 1.0, -2)
-            IK.mountain_layer(c, [(W * .2, H * .1, W * .2), (W * .7, H * .14, W * .2)], H * .86, IK.QIAN, .5, 91, -50, W + 50, blur=3)
+            IK.mountain_layer(c, [(W * .2, H * .1, W * .2), (W * .7, H * .14, W * .2)], H * .86, TH.wash, .5, 91, -50, W + 50, blur=3)
             IK.mist(c, ht, H * .78, H * .86, .6, 92, 3)
         sx0, sx1 = (IK.SAFE or (0, 1))
         cx_, sw_ = (sx0 + sx1) / 2 * W, (sx1 - sx0) * W
@@ -630,46 +542,46 @@ def render_hook_frame_ink(surface, hf, frame, matte, ctx):
             f = F('song', min(200, (sw_ - 140) / max(len(p_) for p_ in parts)))
             y0 = H * .45 - (len(parts) - 1) * f.getSize() * .65
             for j, (p_, t_) in enumerate(zip(parts, tts)):
-                IK.ink_text(c, p_, cx_, y0 + j * f.getSize() * 1.3, f, lt, t_, IK.MO, .97, stagger=.08, dur=.7, align='c')
+                IK.ink_text(c, p_, cx_, y0 + j * f.getSize() * 1.3, f, lt, t_, TH.ink, .97, stagger=.08, dur=.7, align='c')
         txt = None
     else:
         draw_img(c, img, xf)
     if txt:
         IK.left_mist(c, lt, .85 * clamp((lt - tt + .5) / .5))
         f = F('song', 230 if len(txt) <= 4 else 190)
-        IK.ink_bloom(c, 60 + f.getSize() * .5, 640 - f.getSize() * .35, lt, tt - .05, f.getSize() * .9, IK.MO, .2, seed=k)
-        IK.ink_text(c, txt, 60, 640, f, lt, tt, IK.MO, .97, stagger=.1, dur=.9)
+        IK.ink_bloom(c, 60 + f.getSize() * .5, 640 - f.getSize() * .35, lt, tt - .05, f.getSize() * .9, TH.ink, .2, seed=k)
+        IK.ink_text(c, txt, 60, 640, f, lt, tt, TH.ink, .97, stagger=.1, dur=.9)
         if matte is not None:
             cut = skia.Image.fromarray(np.ascontiguousarray(np.dstack([fr, matte])), colorType=skia.kRGBA_8888_ColorType,
                                        alphaType=skia.kUnpremul_AlphaType)
             draw_img(c, cut, xf)
     # paper frame + top band so the HUD reads over any footage
-    sh = skia.GradientShader.MakeLinear([(0, 0), (0, 170)], [CI(IK.XUAN_L, .7), CI(IK.XUAN_L, 0)])
+    sh = skia.GradientShader.MakeLinear([(0, 0), (0, 170)], [CI(TH.surface, .7), CI(TH.surface, 0)])
     c.drawRect(skia.Rect.MakeWH(W, 170), skia.Paint(Shader=sh))
-    rrect(c, 34, 34, W - 68, H - 68, 2, IK.MO, .3, stroke=1.2)
-    circle(c, 82, 98, 7, IK.ZHU, .65 + .35 * math.sin(ht * 3))
-    text(c, HOOK['kicker'], 102, 106, F('songb', 26), IK.MO, .95, spacing=8)
+    rrect(c, 34, 34, W - 68, H - 68, 2, TH.ink, .3, stroke=1.2)
+    circle(c, 82, 98, 7, TH.accent, .65 + .35 * math.sin(ht * 3))
+    text(c, HOOK['kicker'], 102, 106, F('songb', 26), TH.ink, .95, spacing=8)
     if d['path'] is None:
         stc = d['s0'] + lt
-        text(c, f'原片 {int(stc) // 60:02d}:{int(stc) % 60:02d}', W - 80, 106, F('songr', 24), IK.MO, .85, align='r', spacing=4)
+        text(c, f'原片 {int(stc) // 60:02d}:{int(stc) % 60:02d}', W - 80, 106, F('songr', 24), TH.ink, .85, align='r', spacing=4)
     else:
-        text(c, d.get('label') or '空镜 · B-ROLL', W - 80, 106, F('songr', 24), IK.MO, .85, align='r', spacing=4)
+        text(c, d.get('label') or '空镜 · B-ROLL', W - 80, 106, F('songr', 24), TH.ink, .85, align='r', spacing=4)
     x0, x1, gap = 80, W - 80, 14
     xx = x0
     for j, dj in enumerate(HOOK['clips']):
         wj = (x1 - x0 - gap * (len(HOOK['clips']) - 1)) * dj['n'] / HOOK['n']
-        line(c, xx, 60, xx + wj, 60, IK.MO, .22, 2)
+        line(c, xx, 60, xx + wj, 60, TH.ink, .22, 2)
         fill = 1 if j < k else (lt / cd if j == k else 0)
-        if fill > 0: line(c, xx, 60, xx + wj * fill, 60, IK.ZHU, .9, 2.5)
+        if fill > 0: line(c, xx, 60, xx + wj * fill, 60, TH.accent, .9, 2.5)
         xx += wj + gap
     IK.bottom_mist(c, .62)
     if d['path'] is None:
         draw_caption(c, d['s0'] + lt, ctx.captions, min_start=d['s0'] - .15)
     if k and lt < .45:   # mist dissolve between clips
-        c.drawRect(skia.Rect.MakeWH(W, H), paint(IK.XUAN_L, .8 * (1 - eo(lt / .45))))
+        c.drawRect(skia.Rect.MakeWH(W, H), paint(TH.surface, .8 * (1 - eo(lt / .45))))
     if ht > HOOK['dur'] - .5:   # paper wash floods the frame into the edit
         u = (ht - (HOOK['dur'] - .5)) / .5
-        c.drawPath(IK.blob_path(W / 2, H / 2, 2000 * eio(u) + 1, 3, .14, ht), paint(IK.XUAN_L, 1, blur=40))
+        c.drawPath(IK.blob_path(W / 2, H / 2, 2000 * eio(u) + 1, 3, .14, ht), paint(TH.surface, 1, blur=40))
     return surface.makeImageSnapshot().toarray(colorType=skia.kRGBA_8888_ColorType)
 
 
@@ -684,23 +596,23 @@ def render_hook_broll_ink(surface, c, k, d, lt, ht, cd, frame):
     sw, sh = W / z, H / z
     c.drawRect(skia.Rect.MakeXYWH(fx + 6, fy + 18, fw - 12, fh - 6), paint((40, 40, 50), .22, blur=22))
     c.drawImageRect(img, skia.Rect.MakeXYWH((W - sw) / 2, (H - sh) / 2, sw, sh), skia.Rect.MakeXYWH(fx, fy, fw, fh), SAMP)
-    c.drawRect(skia.Rect.MakeXYWH(fx - 10, fy - 10, fw + 20, fh + 20), paint(IK.MO, .45, stroke=1.4))
-    circle(c, fx + 4, fy - 44, 6, IK.ZHU, .65 + .35 * math.sin(ht * 3))
-    text(c, HOOK['kicker'], fx + 22, fy - 36, F('songb', 26), IK.MO, .95, spacing=8)
-    text(c, d.get('label') or '空镜', fx + fw, fy - 36, F('songr', 24), IK.MO, .85, align='r', spacing=4)
+    c.drawRect(skia.Rect.MakeXYWH(fx - 10, fy - 10, fw + 20, fh + 20), paint(TH.ink, .45, stroke=1.4))
+    circle(c, fx + 4, fy - 44, 6, TH.accent, .65 + .35 * math.sin(ht * 3))
+    text(c, HOOK['kicker'], fx + 22, fy - 36, F('songb', 26), TH.ink, .95, spacing=8)
+    text(c, d.get('label') or '空镜', fx + fw, fy - 36, F('songr', 24), TH.ink, .85, align='r', spacing=4)
     x0, x1, gap = fx, fx + fw, 14
     xx = x0; yb = fy + fh + 30
     for j, dj in enumerate(HOOK['clips']):
         wj = (x1 - x0 - gap * (len(HOOK['clips']) - 1)) * dj['n'] / HOOK['n']
-        line(c, xx, yb, xx + wj, yb, IK.MO, .22, 2)
+        line(c, xx, yb, xx + wj, yb, TH.ink, .22, 2)
         fill = 1 if j < k else (lt / cd if j == k else 0)
-        if fill > 0: line(c, xx, yb, xx + wj * fill, yb, IK.ZHU, .9, 2.5)
+        if fill > 0: line(c, xx, yb, xx + wj * fill, yb, TH.accent, .9, 2.5)
         xx += wj + gap
     if k and lt < .45:
-        c.drawRect(skia.Rect.MakeWH(W, H), paint(IK.XUAN_L, .8 * (1 - eo(lt / .45))))
+        c.drawRect(skia.Rect.MakeWH(W, H), paint(TH.surface, .8 * (1 - eo(lt / .45))))
     if ht > HOOK['dur'] - .5:
         u = (ht - (HOOK['dur'] - .5)) / .5
-        c.drawPath(IK.blob_path(W / 2, H / 2, 2000 * eio(u) + 1, 3, .14, ht), paint(IK.XUAN_L, 1, blur=40))
+        c.drawPath(IK.blob_path(W / 2, H / 2, 2000 * eio(u) + 1, 3, .14, ht), paint(TH.surface, 1, blur=40))
     return surface.makeImageSnapshot().toarray(colorType=skia.kRGBA_8888_ColorType)
 
 
@@ -709,16 +621,16 @@ def draw_hook_bridge(c, ot):
     if INK:
         if ot < .6:   # the paper wash recedes as an opening ink hole
             c.save(); c.clipPath(IK.blob_path(W / 2, H / 2, 2000 * eio(ot / .6) + 1, 5, .14, ot), skia.ClipOp.kDifference, True)
-            c.drawRect(skia.Rect.MakeWH(W, H), paint(IK.XUAN_L, 1 - eo(ot / .6) * .3))
+            c.drawRect(skia.Rect.MakeWH(W, H), paint(TH.surface, 1 - eo(ot / .6) * .3))
             c.restore()
         if HOOK['outro'] and ot < 1.8:
             a = eo(P(ot, .25, .5)) * clamp((1.8 - ot) / .4)
             if a > 0:
                 f = F('songb', 34); w_ = tw(HOOK['outro'], f) + 120
-                rrect(c, W / 2 - w_ / 2, 92, w_, 64, 6, IK.XUAN_L, .92 * a)
-                rrect(c, W / 2 - w_ / 2, 92, w_, 64, 6, IK.MO, .25 * a, stroke=1.2)
+                rrect(c, W / 2 - w_ / 2, 92, w_, 64, 6, TH.surface, .92 * a)
+                rrect(c, W / 2 - w_ / 2, 92, w_, 64, 6, TH.ink, .25 * a, stroke=1.2)
                 IK.seal(c, '启', W / 2 - w_ / 2 + 36, 124, 36, ot, .3, a, seed=2)
-                text(c, HOOK['outro'], W / 2 - w_ / 2 + 72, 136, f, IK.MO, a, spacing=6)
+                text(c, HOOK['outro'], W / 2 - w_ / 2 + 72, 136, f, TH.ink, a, spacing=6)
         return
     if ot < .3: lime_wipe(c, ot)
     if HOOK['outro'] and ot < 1.4:

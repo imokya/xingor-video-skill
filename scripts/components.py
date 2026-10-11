@@ -9,6 +9,7 @@ animations automatically. Kinds: whoosh, swish, pop, impact, riser, glitch.
 import math
 import skia
 from fx import *
+from kit.motion import spring
 
 # person anchor, overwritten by render.py from meta.json
 PERSON = {'head_x': 1060, 'head_top': 70, 'face_y': 430, 'body_left': 600, 'body_right': 1640}
@@ -1046,12 +1047,6 @@ PAPER_INK = (16, 18, 22)
 PAPER_GREY = (128, 132, 140)
 # theme='ink' (poetry-ink): same values as ink.py, kept here to avoid a circular import
 INK_MO, INK_ZHU, INK_HUI, INK_PAPER = (22, 44, 96), (200, 70, 40), (100, 104, 114), (248, 246, 240)
-
-
-def spring(x):
-    """damped spring 0->1 with a small overshoot; feels 'physical' for card moves."""
-    x = clamp(x)
-    return 1.0 if x >= 1 else 1 - math.exp(-6.5 * x) * math.cos(8.0 * x) * (1 - .25 * x)
 
 
 CARD_SLOTS = {
