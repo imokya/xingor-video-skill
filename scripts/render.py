@@ -42,6 +42,7 @@ import kit.theme as KT
 # visual theme (kit.theme): a preset name ('neon' default, 'poetry-ink'), a dict of overrides, or a designed Theme
 THEME = getattr(PROJ, 'THEME', 'neon')
 TH = KT.resolve(THEME)
+KT.ACTIVE = TH
 if TH.family == 'custom':   # a designed theme re-skins every template and uses the paper-family chrome
     import kit.reskin
     kit.reskin.apply(TH)
@@ -420,6 +421,17 @@ def render_frame(surface, st, ot, frame, matte, ctx):
     elif tr:
         sc = tr[0]
         draw_stack(c, sc, ink_freeze(ctx.scenes, sc, st), img, cutimg, ctx)
+    elif INK and IK.TURN == 'iris' and any(0 <= st - nx.t0 < .5 and not getattr(nx, 'smooth_in', False) for nx in ctx.scenes[1:]):
+        # circle-expand page turn with a chromatic fringe in the theme's accents
+        i = max(k for k, nx in enumerate(ctx.scenes) if k and 0 <= st - nx.t0 < .5 and not getattr(nx, 'smooth_in', False))
+        prev, nx = ctx.scenes[i - 1], ctx.scenes[i]
+        r = (math.hypot(W, H) / 2 + 60) * eexp((st - nx.t0) / .5)
+        draw_stack(c, prev, min(st, getattr(prev, 'hold_t', lambda: prev.t1 - .32)()), img, cutimg, ctx)
+        for k, col in enumerate([TH.accent2, TH.accent]):
+            circle(c, W / 2, H / 2, r + (2 - k) * 10, col, 1)
+        c.save(); pth = skia.Path(); pth.addCircle(W / 2, H / 2, r); c.clipPath(pth, skia.ClipOp.kIntersect, True)
+        draw_stack(c, nx, st, img, cutimg, ctx)
+        c.restore()
     elif INK and IK.TURN == 'punch':   # quick punch-in at each hard cut (smooth_in scenes do their own move)
         u = 1.0
         for nx in ctx.scenes[1:]:

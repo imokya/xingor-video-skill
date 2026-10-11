@@ -135,6 +135,7 @@ PRESETS = {
                   fonts=FONT_VOICES['modern'], tempo='snappy', enter='slide', turn='cut', sfx='neon', background='plain',
                   note='撞色测评 palette (rendered by scripts/review): black / cream / coral / electric blue blocks'),
 }
+ACTIVE = PRESETS['neon']     # the theme of the current render (render.py sets it); kit.blocks reads it
 ALIASES = {'ink': 'poetry-ink', '诗墨': 'poetry-ink', 'neon-lab': 'neon', 'documentary': 'bronze', 'flat-review': 'flat'}
 
 
