@@ -78,3 +78,14 @@ Everything lives in `scripts/travel/` and runs with the work-dir venv (numpy, pi
 Say which data is real (distances: great-circle airport ↔ airport, OSRM route km / minutes; runways, roads and names
 from OSM) and which is invented (ticket number and times when `demo`). Mention the credits line, the absence of
 borders, and that OSM names can be outdated. Offer the web preview link for review before the final render.
+
+## Updates from the xingor promo (2026-10)
+- **Portrait output** (`"size": [1080, 1440]` or 9:16) works: the camera scales its focal length by `W / 1920` so the
+  horizontal field of view stays the same, and the arrival name is centred above the pin. Map data in `./data/` can
+  be reused between a 16:9 and a 3:4 trip folder.
+- **One layer on the card:** when the boarding pass appears, the map on the card frosts out and the pass is printed
+  on the card face (no map + ticket double layer).
+- **Chinese on screen:** units are 公里 / 分钟, ticket fields are Chinese (`flight` can be a label like
+  `东北之旅 · 第一程`; keep `demo: true` so 示意航班 shows); the info-card title shrinks to fit the card.
+- A destination pin on the exact taxi end gets covered by the car: set `poi.route_end` to where the taxi stops and
+  `poi.lonlat` a few hundred metres beside it.

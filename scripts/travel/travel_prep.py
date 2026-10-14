@@ -15,7 +15,8 @@ import json, math, os, pickle, struct, sys, time, urllib.parse, urllib.request, 
 
 CACHE = os.path.expanduser(os.environ.get('XINGOR_TRAVEL_CACHE', '~/.cache/xingor-travel'))
 UA = {'User-Agent': 'xingor-video-skill travel-route/1.0'}
-OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter']
+OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter',
+            'https://overpass.kumi.systems/api/interpreter']   # 504s are common: the script retries and rotates
 NE_FILES = {'land': 'physical/ne_10m_land', 'coastline': 'physical/ne_10m_coastline',
             'rivers': 'physical/ne_10m_rivers_lake_centerlines', 'lakes': 'physical/ne_10m_lakes',
             'roads': 'cultural/ne_10m_roads', 'places': 'cultural/ne_10m_populated_places', 'urban': 'cultural/ne_10m_urban_areas'}

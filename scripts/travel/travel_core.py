@@ -422,7 +422,8 @@ class Trip:
 
     def cam(self, n):
         a = self.CAMS
-        return Cam3(a['tx'][n], a['ty'][n], a['head'][n], a['pitch'][n], a['dist'][n], a['F'][n], a['cx'][n], a['cy'][n], a['flip'][n])
+        fs = self.W / 1920.0 if self.W < self.H else 1.0      # portrait frames: keep the horizontal field of view
+        return Cam3(a['tx'][n], a['ty'][n], a['head'][n], a['pitch'][n], a['dist'][n], a['F'][n] * fs, a['cx'][n], a['cy'][n], a['flip'][n])
 
     def globe_params(self, t):
         """(中心经度, 中心纬度, 半径 px, cx, cy, 飞线进度)"""

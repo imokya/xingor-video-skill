@@ -409,6 +409,8 @@ class Renderer:
         if opn < .999 and len(cl) >= 3:
             cla = np.array(cl); px, py, _ = cam.proj(cla[:, 0], cla[:, 1]); c.clipPath(path_from(px, py, True), skia.ClipOp.kIntersect, True)
         self.draw_map(c, cam); self.labels(c, cam, opn > .6); self.draw_track(c, cam, self.t.FLIGHT, 0, 7, True)
+        if S['ui'][n] > .002 and opn < .999:      # the card face becomes the boarding pass: one layer, map frosted out
+            c.drawRect(skia.Rect.MakeWH(W, H), paint((246, 247, 251), .94 * float(S['ui'][n])))
         c.restore()
         if ui > .002 and not cam.fl:
             Hm = cam.homography(); k = self.t.KM_PER_PX
@@ -420,9 +422,7 @@ class Renderer:
             c.saveLayer(None, lp); c.concat(skia.Matrix.MakeAll(*[float(v) for v in M.ravel()])); self.ticket(c, t); c.restore()
 
     def ticket(self, c, t):
-        PW, y0 = self.t.PH_W, 500; tk = self.t.cfg.get('ticket', {}); cfg = self.t.cfg
-        c.drawRRect(skia.RRect.MakeRectXY(skia.Rect.MakeXYWH(30, y0 + 6, PW - 60, 360), 30, 30), paint((30, 40, 70), .14, blur=9))
-        c.drawRRect(skia.RRect.MakeRectXY(skia.Rect.MakeXYWH(30, y0, PW - 60, 360), 30, 30), paint((255, 255, 255), .86))
+        PW, y0 = self.t.PH_W, 500; tk = self.t.cfg.get('ticket', {}); cfg = self.t.cfg   # printed straight on the card
         tag = f"{tk.get('flight', '')}{'' if tk.get('demo') is False else ' · 示意航班'}"
         text(c, tag, 58, y0 + 46, 17, 500, BLUE)
         text(c, tk.get('from', cfg['origin']['name']), 58, y0 + 100, 28, 700, INK); text(c, tk.get('to', cfg['dest']['name']), PW - 58, y0 + 100, 28, 700, INK, 1, 'r')
@@ -440,7 +440,9 @@ class Renderer:
         x, y, w, h = 70, 70 + 30 * (1 - a), 560, 196
         c.drawRRect(skia.RRect.MakeRectXY(skia.Rect.MakeXYWH(x, y + 10, w, h), 26, 26), paint((0, 0, 0), .16 * a, blur=18))
         c.drawRRect(skia.RRect.MakeRectXY(skia.Rect.MakeXYWH(x, y, w, h), 26, 26), paint((255, 255, 255), .96 * a))
-        text(c, kicker, x + 34, y + 46, 20, 400, (120, 128, 140), a); text(c, title, x + 34, y + 100, 40, 700, (28, 32, 40), a)
+        ts = 40.0
+        while ts > 22 and font(ts, 700).measureText(title) > w - 68: ts -= 1      # keep the title inside the card
+        text(c, kicker, x + 34, y + 46, 20, 400, (120, 128, 140), a); text(c, title, x + 34, y + 100, ts, 700, (28, 32, 40), a)
         text(c, line, x + 34, y + 142, 22, 400, MUTED, a)
         c.drawRRect(skia.RRect.MakeRectXY(skia.Rect.MakeXYWH(x + 34, y + 160, w - 68, 8), 4, 4), paint((225, 230, 238), a))
         if prog > 0: c.drawRRect(skia.RRect.MakeRectXY(skia.Rect.MakeXYWH(x + 34, y + 160, (w - 68) * prog, 8), 4, 4), paint(BLUE, a))
@@ -460,8 +462,12 @@ class Renderer:
         c.drawPath(pin, paint((0, 0, 0), .2 * clamp(kk), blur=6)); c.drawPath(pin, paint(BLUE, clamp(kk * 2))); c.drawCircle(0, -56, 11, paint((255, 255, 255), clamp(kk * 2)))
         c.restore()
         q = eo(P(t, T['taxi1'] + .2, .6)); poi = self.t.cfg['poi']
-        text(c, poi['name'], x - 50, y - 40, 66, 700, INK, q, 'r', halo=(255, 255, 255))
-        text(c, f"{poi.get('sub', self.t.cfg['dest']['name'])}  到达", x - 54, y + 8, 28, 400, (90, 98, 112), q, 'r', halo=(255, 255, 255))
+        if self.W < self.H:      # portrait: name centred above the pin so it never leaves the frame
+            text(c, poi['name'], x, y - 190, 62, 700, INK, q, 'c', halo=(255, 255, 255))
+            text(c, f"{poi.get('sub', self.t.cfg['dest']['name'])}  到达", x, y - 142, 26, 400, (90, 98, 112), q, 'c', halo=(255, 255, 255))
+        else:
+            text(c, poi['name'], x - 50, y - 40, 66, 700, INK, q, 'r', halo=(255, 255, 255))
+            text(c, f"{poi.get('sub', self.t.cfg['dest']['name'])}  到达", x - 54, y + 8, 28, 400, (90, 98, 112), q, 'r', halo=(255, 255, 255))
 
     # ============================================================ 每帧
     def frame(self, n):
@@ -490,8 +496,8 @@ class Renderer:
                 prog = clamp(ps / self.t.FLIGHT.L); tk = trip.get('ticket', {})
                 self.info_card(c, eo(P(t, T['fly0'] + .3, .5)) * (1 - P(t, T['landed'], .4)),
                                f"{tk.get('flight', '')}{'' if tk.get('demo') is False else ' · 示意航班'}",
-                               f"{trip['origin']['airport'].get('code') or trip['origin']['name']}  →  {trip['dest']['airport'].get('code') or trip['dest']['name']}",
-                               f'已飞 {self.t.FLIGHT_KM * prog:,.0f} km / 约 {self.t.FLIGHT_KM:,.0f} km', prog)
+                               f"{trip['origin']['name']}  →  {trip['dest']['name']}",
+                               f'已飞 {self.t.FLIGHT_KM * prog:,.0f} 公里 / 全程约 {self.t.FLIGHT_KM:,.0f} 公里', prog)
                 if t < T['landed']: self.credit(c, '地图数据 © OpenStreetMap 贡献者 · Natural Earth')
             if t >= T['landed']:
                 if t >= T['landed'] + .6: self.draw_map(c, cam)
@@ -504,7 +510,7 @@ class Renderer:
                 if ta > 0: self.draw_model(c, cam, self.t.CAR, C['x'][n], C['y'][n], 0, C['head'][n], min(.36, max(.05, cam.dist * .12)), a=ta)
                 self.arrive(c, cam, t); kk = cs / self.t.TAXI.L
                 self.info_card(c, eo(P(t, T['taxi0'] - .2, .5)), '出租车 · 路线估算', f"{trip['dest']['airport']['name']}  →  {trip['poi']['name']}",
-                               f'{self.t.TAXI_KM * kk:.1f} / {self.t.TAXI_KM:.1f} km · 约 {self.t.TAXI_MIN:.0f} 分钟', kk)
+                               f'{self.t.TAXI_KM * kk:.1f} / {self.t.TAXI_KM:.1f} 公里 · 约 {self.t.TAXI_MIN:.0f} 分钟', kk)
                 self.credit(c, '地图数据 © OpenStreetMap 贡献者 · 路线 OSRM')
         if blur > .3: c.restore()
         if t < xf1: c.restore()

@@ -10,7 +10,7 @@ if [ ! -x .venv/bin/python ]; then
 fi
 PIP="uv pip install -p .venv/bin/python"
 command -v uv >/dev/null || PIP=".venv/bin/pip install"
-$PIP -q imageio-ffmpeg faster-whisper numpy pillow torch torchvision skia-python
+$PIP -q imageio-ffmpeg faster-whisper numpy pillow scipy torch torchvision skia-python
 FF=$(.venv/bin/python -c "import imageio_ffmpeg;print(imageio_ffmpeg.get_ffmpeg_exe())")
 ln -sf "$FF" ./ffmpeg
 if [ ! -f models/rvm_mobilenetv3.pth ]; then
