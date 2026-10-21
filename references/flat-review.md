@@ -6,7 +6,7 @@ Everything lives in `scripts/review/` and runs with the work-dir venv (`.venv/bi
 
 | script | does |
 |---|---|
-| `rv_tts.py` | per-line TTS → `audio/vo_XX.wav` + `vo.json` (Fish Audio or MiniMax; skips unchanged lines) |
+| `rv_tts.py` | TTS → `audio/vo_XX.wav` + `vo.json` (Fish s2.1-pro with inline tone directions, `--para` paragraph synthesis, `--verify`; or MiniMax; skips unchanged lines) — see `narration.md` |
 | `rv_align.py` | joins the lines with pauses → `vo_track.wav`, word timestamps → `timeline.json` (hook: `--hook` → `words.json`), checks every line against the script |
 | `rv_core.py` | all drawing / sound components (`from rv_core import *` in scenes.py) |
 | `rv_render.py` | renders `scenes.py` → mp4 (3:4, or `--67` for 6:7), mixes voice + SFX + hook + BGM, appends the outro clip; `still` mode for test frames |
@@ -22,7 +22,8 @@ Everything lives in `scripts/review/` and runs with the work-dir venv (`.venv/bi
 
 ## Workflow
 1. **Script** — one sentence per line in `vo/lines.txt` (B 站 review voice: plain, a bit funny, real flaws, no ad slogans). Markers: `# 段落名` starts a new section (0.65 s pause), `#gap 1.25` puts a longer pause before the next line (room for a sound-effect gag). Hook sentence in `vo/hook.txt`. Get the script approved before any TTS.
-2. **Voice** — `rv_tts.py vo/lines.txt vo/full --engine fish --voice <id> --speed 1.1` (or `--engine minimax --voice … --emotion happy`). Offer 4–6 samples first (`--sample`). Rules learned the hard way:
+2. **Voice** — `rv_tts.py vo/lines.txt vo/full --engine fish --voice <id> --speed 1.06 --para --verify` (or `--engine minimax --voice … --emotion happy`). Write short Chinese tone directions inside the lines (`[轻笑，带点挑衅] …`) and follow `references/narration.md`. Offer 4–6 samples first (`--sample`). Rules learned the hard way:
+   - Fish `s1` ignores tone directions and can read them aloud — keep the default `s2.1-pro`; check every clip with `--verify`.
    - Use generic style voices or the user's own clone. **Skip celebrity / named-creator clones** in public voice libraries — they impersonate real people.
    - Fish API credit is separate from the website's membership credit (HTTP 402 → user tops up at fish.audio/app/developers).
    - MiniMax `surprised` can make some voices sound flat or down; when in doubt use `happy` everywhere.

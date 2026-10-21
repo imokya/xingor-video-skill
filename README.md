@@ -38,7 +38,7 @@ git clone https://github.com/imokya/xingor-video-skill.git ~/.claude/skills/xing
 
 其他助手放进各自的 skills 目录即可（文件夹名保持 `xingor-video-skill`）。
 
-第一次使用时会自动准备运行环境。需要 macOS（用到系统中文字体）；文物纪录片配音需要 MiniMax API Key，撞色测评可用 Fish Audio 或 MiniMax（Key 写在 `.env` 里）。
+第一次使用时会自动准备运行环境。需要 macOS（用到系统中文字体）；文物纪录片配音需要 MiniMax API Key，撞色测评可用 Fish Audio 或 MiniMax（Key 写在 `.env` 里）。AI 配音默认用 Fish Audio s2.1-pro：文案里可以写 `[压低声音，神秘地]` 这样的语气指令，整段合成后自动切句并逐句转写核对，听起来更像真人（见 `references/narration.md`）。
 
 ## 组件
 
