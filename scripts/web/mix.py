@@ -17,7 +17,7 @@ for t, it in zip(json.load(open(a.times)), json.load(open(a.vo + '/vo.json'))):
     x = read(a.vo + '/' + it['file']); i = int(t * SR); j = min(N, i + len(x))
     vo[i:j] += x[:j - i]; duck[max(0, i - int(0.25 * SR)):min(N, j + int(0.4 * SR))] = 1   # 提前 0.25 s 压、结束后 0.4 s 回
 k = int(0.3 * SR); duck = np.convolve(duck, np.ones(k) / k, 'same')
-MUSIC, DUCK = 0.75, 0.68   # 配乐整体 −2.5 dB；说话时再压到 0.32（≈ −10 dB），人声比配乐高 ≈ 13 dB
+MUSIC, DUCK = 0.6, 0.72   # 配乐整体 −4.4 dB；说话时再压到 0.28（≈ −11 dB），人声比配乐高 ≈ 16 dB（用户偏好配乐偏轻）
 mix = bgm * MUSIC * (1 - DUCK * duck)[:, None] + vo * 1.05
 mix /= max(1, np.abs(mix).max() / 0.95)
 with wave.open('mix.wav', 'wb') as w:

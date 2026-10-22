@@ -62,7 +62,7 @@ python rv_tts.py vo/lines.txt vo/full --engine fish --voice <id> --speed 1.06 --
   proportional to its character count within the line.
 
 ## Mix
-- Voice ~10–15 dB above the music while speaking (duck the music around each line, 0.25 s before / 0.4 s after).
+- Voice ~16 dB above the music while speaking (the user prefers light music; 13 dB still sounded loud) (duck the music around each line, 0.25 s before / 0.4 s after).
 - Normalize the final mix to **−14 LUFS, true peak −1.5 dB** (`loudnorm=I=-14:TP=-1.5:LRA=11`) — at the −18 LUFS a raw
   mix tends to land on, the video plays noticeably quieter than its neighbours in the feed.
 - Offer a version without music (voice + SFX only) so the user can add a track from the platform's licensed library.
