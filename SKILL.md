@@ -32,6 +32,7 @@ Read `references/style-guide.md` before planning. It has the rules (palette, saf
 | a **纯配音 / 无人出镜 测评·实测** of an app, AI tool or product from screenshots, or names flat-review / 撞色测评 | **flat-review · 撞色测评** | its own pipeline in `scripts/review/` (`from rv_core import *`) | `references/flat-review.md` | `references/example_review/scenes_muse.py` |
 | a **旅行路线 / 行程 / 从 A 飞到 B 再打车到某地** animation, or names travel-route | **travel-route · 旅行路线** | its own pipeline in `scripts/travel/` (`travel.py prep / web / stills / render`) | `references/travel-route.md` | `scripts/travel/trip_example.json` |
 | a **宣传片 / 作品集 / showreel / 产品介绍** built from existing clips + narration (no presenter), or names showcase | **showcase · 作品宣传片** | a scenes file on `kit.showcase` (`from kit.showcase import *`), music from `kit/music.py` | `references/showcase.md` | `references/example_showcase/scenes_promo_3x4.py` |
+| a **科普 / 原理讲解** whose pictures are all drawn by code (no footage, no presenter), or names **creative coding / 代码艺术** | **creative-coding · 代码艺术科普** | its own pipeline in `scripts/web/` (browser canvas, `renderFrame(n)`) | `references/creative-coding.md` | `references/example_explainer/film.js` |
 
 If no style is named, **design one** (`references/design.md`): read the content, derive a theme (seed colour, mood, type voice, tempo, page turn, sound) with `kit.theme.design`, check it with `kit/preview.py`, and choose components by what each sentence does — from `components.py`, `ink.py` and `kit/blocks.py`, all of which follow the active theme — designing new ones when nothing fits. **Fit is a hard rule:** decide the content's character first (traditional / tech / playful / cinematic / editorial, `scripts/kit/fit.py`) and use only components, effects and turns that fit it — ink spread, seals, torn paper and vertical verse only for 古风诗词 / 传统文化, never for tech, whatever the colours. Chinese-style wording like 国风 / 中国风 is a design brief, not a request for poetry-ink; only 水墨诗词 selects it. Don't mix the two template families in one video (`TalkCard` works in both: `theme='ink'`).
 
@@ -48,6 +49,15 @@ feature comes right after it; vertical clips are 3D flip cards (`vcard`) with tr
 tilted scrolling plane (`tilted_list`); push-blur transitions; the creator's follow clip closes uncropped. Probe every
 clip (duration, rotation, dark passages), crop UI / cursors / hands, keep everything inside the safe area, and treat
 3:4 as a full re-layout. Follow `references/showcase.md`.
+
+**creative-coding in one breath**: a 2–3 min narrated explainer drawn entirely in a browser 2D canvas, one ES module
+whose `renderFrame(n)` draws time n/60 deterministically (seeded randomness only), chapters as time windows. Each
+chapter gets its own material (深青荧光夜, 方格纸墨水, 暖黑金尘, 黑板粉笔, 深靛夜色) and one motif that *explains* the idea —
+character seeds on a dandelion, a dragon of characters, ink bars with a sampling pen, a telegraph tape, a sphere of
+characters, constellations in 3D with depth fog, chalk threads, text crumbling into sand. Crisp Songti/Didot type, no
+particle text, almost no glow, no copied reference motifs, nothing static or overlapping. Iterate with stills
+(`shot.mjs`), render with `render_par.sh` (4 browsers in parallel, ~4× faster), mix with `mix.py`, cover from the same
+module (`cover.mjs`). The workflow below does **not** apply — follow `references/creative-coding.md`.
 
 **Any AI narration (TTS 配音), whatever the style** — read `references/narration.md` first. In short: Fish `s2.1-pro`
 (the default; `s1` ignores emotion tags and can read them aloud), short Chinese tone directions written inside the line

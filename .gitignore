@@ -8,3 +8,4 @@ work/
 *.mkv
 *.wav
 *.f32
+node_modules/

@@ -1,0 +1,7 @@
+{
+  "name": "xingor-web-film",
+  "private": true,
+  "type": "module",
+  "description": "creative-coding 科普片的浏览器逐帧渲染工具（npm install 一次即可）",
+  "dependencies": { "playwright": "^1.48.0" }
+}
